@@ -1,8 +1,65 @@
-from flask import Flask, render_template_string
+import json
+from pathlib import Path
+
+from flask import Flask, render_template_string, request
 from visca import ViscaCamera
 
 app = Flask(__name__)
 cam = ViscaCamera("10.238.171.114")
+PRESET_NAMES_FILE = Path(__file__).with_name("preset_names.json")
+DEFAULT_PRESET_RANGE = range(1, 13)
+
+
+def default_preset_name(preset_num):
+    return f"Preset {preset_num}"
+
+
+def load_preset_names(file_path=None):
+    file_path = file_path or PRESET_NAMES_FILE
+    names = {preset: default_preset_name(preset) for preset in DEFAULT_PRESET_RANGE}
+
+    if not file_path.exists():
+        return names
+
+    try:
+        persisted_names = json.loads(file_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return names
+
+    if not isinstance(persisted_names, dict):
+        return names
+
+    for key, value in persisted_names.items():
+        try:
+            preset_num = int(key)
+        except (TypeError, ValueError):
+            continue
+
+        if preset_num not in DEFAULT_PRESET_RANGE:
+            continue
+
+        cleaned_value = str(value).strip()
+        if cleaned_value:
+            names[preset_num] = cleaned_value
+
+    return names
+
+
+def save_preset_names(names, file_path=None):
+    file_path = file_path or PRESET_NAMES_FILE
+    data = {str(preset): name for preset, name in names.items()}
+    file_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+
+def sanitize_preset_name(name, preset_num):
+    cleaned_name = name.strip()[:40]
+    if not cleaned_name:
+        return default_preset_name(preset_num)
+    return cleaned_name
+
+
+def preset_in_range(preset_num):
+    return preset_num in DEFAULT_PRESET_RANGE
 
 
 def safe_recall(preset):
@@ -11,10 +68,44 @@ def safe_recall(preset):
     cam.preset_recall(preset)
 
 
+preset_names = load_preset_names()
+
+
 @app.route("/preset/<int:num>")
 def preset(num):
+    if not preset_in_range(num):
+        return "Invalid preset", 400
+
     safe_recall(num)
-    return f"Preset {num}"
+    return f"Recalled {preset_names.get(num, default_preset_name(num))}"
+
+
+@app.route("/preset/<int:num>/set", methods=["POST"])
+def preset_set(num):
+    if not preset_in_range(num):
+        return "Invalid preset", 400
+
+    cam.preset_set(num)
+    return f"Saved camera position to {preset_names.get(num, default_preset_name(num))}"
+
+
+@app.route("/preset/<int:num>/name", methods=["POST"])
+def preset_name(num):
+    if not preset_in_range(num):
+        return "Invalid preset", 400
+
+    requested_name = request.form.get("name")
+    if requested_name is None and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        requested_name = payload.get("name")
+
+    if requested_name is None:
+        return "Name is required", 400
+
+    cleaned_name = sanitize_preset_name(str(requested_name), num)
+    preset_names[num] = cleaned_name
+    save_preset_names(preset_names)
+    return f"Updated preset {num} name to {cleaned_name}"
 
 
 @app.route("/zoom/in/<int:speed>")
@@ -65,7 +156,13 @@ def move(direction):
 
 @app.route("/")
 def home():
-    return render_template_string("""
+    presets = [
+        {"num": preset, "name": preset_names.get(preset, default_preset_name(preset))}
+        for preset in DEFAULT_PRESET_RANGE
+    ]
+
+    return render_template_string(
+        """
 <!DOCTYPE html>
 <html>
 <head>
@@ -120,13 +217,49 @@ def home():
 
         .preset-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 8px;
         }
 
-        .preset-grid button {
+        .preset-card {
+            background: #111;
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .preset-recall {
             height: 70px;
             font-size: 14px;
+        }
+
+        .preset-actions {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 6px;
+        }
+
+        .preset-actions input {
+            background: #222;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 6px;
+            min-width: 0;
+        }
+
+        .preset-actions button {
+            padding: 8px;
+            font-size: 14px;
+        }
+
+        .preset-set-btn {
+            width: 100%;
+            font-size: 14px;
+            padding: 8px;
+            background: #305a8a;
         }
 
         .zoom-controls {
@@ -180,18 +313,16 @@ def home():
     <div class="panel">
         <h2>Presets</h2>
         <div class="preset-grid">
-            <button hx-get="/preset/1" hx-target="#status" hx-swap="innerText">1</button>
-            <button hx-get="/preset/2" hx-target="#status" hx-swap="innerText">2</button>
-            <button hx-get="/preset/3" hx-target="#status" hx-swap="innerText">3</button>
-            <button hx-get="/preset/4" hx-target="#status" hx-swap="innerText">4</button>
-            <button hx-get="/preset/5" hx-target="#status" hx-swap="innerText">5</button>
-            <button hx-get="/preset/6" hx-target="#status" hx-swap="innerText">6</button>
-            <button hx-get="/preset/7" hx-target="#status" hx-swap="innerText">7</button>
-            <button hx-get="/preset/8" hx-target="#status" hx-swap="innerText">8</button>
-            <button hx-get="/preset/9" hx-target="#status" hx-swap="innerText">9</button>
-            <button hx-get="/preset/10" hx-target="#status" hx-swap="innerText">10</button>
-            <button hx-get="/preset/11" hx-target="#status" hx-swap="innerText">11</button>
-            <button hx-get="/preset/12" hx-target="#status" hx-swap="innerText">12</button>
+            {% for preset in presets %}
+            <div class="preset-card">
+                <button class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
+                <form class="preset-actions" hx-post="/preset/{{ preset.num }}/name" hx-target="#status" hx-swap="innerText">
+                    <input type="text" name="name" value="{{ preset.name }}" maxlength="40">
+                    <button type="submit">Save</button>
+                </form>
+                <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText">Set Current View</button>
+            </div>
+            {% endfor %}
         </div>
     </div>
 
@@ -249,7 +380,9 @@ def home():
 
 </body>
 </html>
-""")
+""",
+        presets=presets,
+    )
 
 
 if __name__ == "__main__":
