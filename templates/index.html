@@ -79,6 +79,17 @@
         </div>
     </div>
 
+
+    <div class="panel">
+        <h2>Position Feedback</h2>
+        <div class="position-grid">
+            <div>Pan: <span id="position-pan">--</span></div>
+            <div>Tilt: <span id="position-tilt">--</span></div>
+            <div>Zoom: <span id="position-zoom">--</span></div>
+        </div>
+        <button type="button" onclick="refreshPositionFeedback()">Refresh Position</button>
+    </div>
+
 </div>
 
 <div id="name-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'name-modal-overlay')">
@@ -179,6 +190,30 @@
             window.location.reload();
         }
     }
+
+    async function refreshPositionFeedback() {
+        try {
+            const response = await fetch('/position');
+            const payload = await response.json();
+
+            if (!response.ok) {
+                document.getElementById('status').innerText = payload.error || 'Unable to read camera position';
+                return;
+            }
+
+            document.getElementById('position-pan').innerText = payload.pan;
+            document.getElementById('position-tilt').innerText = payload.tilt;
+            document.getElementById('position-zoom').innerText = payload.zoom;
+        } catch (error) {
+            document.getElementById('status').innerText = 'Unable to read camera position';
+        }
+    }
+
+    window.addEventListener('load', () => {
+        refreshPositionFeedback();
+        setInterval(refreshPositionFeedback, 1000);
+    });
+
 </script>
 
 </body>

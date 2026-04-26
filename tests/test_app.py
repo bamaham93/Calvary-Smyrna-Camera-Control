@@ -25,6 +25,10 @@ class FakeCamera:
     def move_up(self, pan_speed=8, tilt_speed=8):
         self.calls.append(("move_up", pan_speed, tilt_speed))
 
+    def get_position_feedback(self):
+        self.calls.append(("get_position_feedback",))
+        return {"pan": 4660, "tilt": 255, "zoom": 3855}
+
 
 class CameraAppTests(unittest.TestCase):
     def setUp(self):
@@ -170,6 +174,9 @@ class CameraAppTests(unittest.TestCase):
         self.assertIn('id="pan-speed-input"', page)
         self.assertIn('id="tilt-speed-input"', page)
         self.assertIn('/static/css/styles.css', page)
+        self.assertIn('Position Feedback', page)
+        self.assertIn('id="position-pan"', page)
+        self.assertIn('refreshPositionFeedback', page)
 
     def test_static_stylesheet_is_served(self):
         response = self.client.get("/static/css/styles.css")
@@ -183,6 +190,26 @@ class CameraAppTests(unittest.TestCase):
 
         self.assertEqual(response_set.status_code, 400)
         self.assertEqual(response_name.status_code, 400)
+
+
+    def test_position_feedback_returns_json_payload(self):
+        response = self.client.get("/position")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"pan": 4660, "tilt": 255, "zoom": 3855})
+        self.assertIn(("get_position_feedback",), camera_app.cam.calls)
+
+    def test_position_feedback_returns_503_when_camera_errors(self):
+        class BrokenCamera(FakeCamera):
+            def get_position_feedback(self):
+                raise TimeoutError("camera timeout")
+
+        camera_app.cam = BrokenCamera()
+
+        response = self.client.get("/position")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json, {"error": "Unable to read camera position"})
 
 
 if __name__ == "__main__":

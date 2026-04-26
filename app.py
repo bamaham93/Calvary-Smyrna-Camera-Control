@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 from visca import ViscaCamera
 
 app = Flask(__name__)
@@ -233,6 +233,14 @@ def move(direction):
 
     moves[direction]()
     return f"Move {direction}"
+
+
+@app.route("/position")
+def position():
+    try:
+        return jsonify(cam.get_position_feedback())
+    except (OSError, ValueError, TimeoutError):
+        return jsonify({"error": "Unable to read camera position"}), 503
 
 
 @app.route("/")
