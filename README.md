@@ -13,3 +13,8 @@ You can update both through the web UI:
 
 - **Rename** opens a preset-name modal.
 - **Settings** opens a settings modal to update zoom speed.
+
+## Project structure
+
+- `templates/index.html`: Flask template for the control UI.
+- `static/css/styles.css`: stylesheet for the UI.

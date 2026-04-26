@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Control</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+<div class="header-row">
+    <h1>Camera Control</h1>
+    <button type="button" onclick="openSettingsModal()">Settings</button>
+</div>
+
+<div class="container">
+
+    <div class="panel">
+        <h2>Presets</h2>
+        <div class="preset-grid">
+            {% for preset in presets %}
+            <div class="preset-card">
+                <button id="preset-label-{{ preset.num }}" class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
+                <button
+                    class="preset-edit-btn"
+                    type="button"
+                    onclick="openNameModal({{ preset.num }}, '{{ preset.name|replace("'", "&#39;") }}')"
+                >Rename</button>
+                <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText">Set Current View</button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Pan / Tilt</h2>
+        <div class="dpad">
+            <button hx-get="/move/up-left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↖</button>
+
+            <button hx-get="/move/up" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↑</button>
+
+            <button hx-get="/move/up-right" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↗</button>
+
+            <button hx-get="/move/left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">←</button>
+
+            <button class="center-stop" hx-get="/stop" hx-target="#status" hx-swap="innerText">■</button>
+
+            <button hx-get="/move/right" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">→</button>
+
+            <button hx-get="/move/down-left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↙</button>
+
+            <button hx-get="/move/down" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↓</button>
+
+            <button hx-get="/move/down-right" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↘</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Zoom</h2>
+        <div class="zoom-controls">
+            <button hx-get="/zoom/in/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">＋</button>
+            <button hx-get="/zoom/stop" hx-target="#status" hx-swap="innerText">■</button>
+            <button hx-get="/zoom/out/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">－</button>
+        </div>
+    </div>
+
+</div>
+
+<div id="name-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'name-modal-overlay')">
+    <div class="modal">
+        <h2>Rename Preset</h2>
+        <form id="name-modal-form" onsubmit="submitPresetName(event)">
+            <input type="hidden" id="name-modal-preset-num" value="">
+            <label for="name-modal-input">Name</label>
+            <input id="name-modal-input" type="text" maxlength="40" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'name-modal-overlay')">Cancel</button>
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="settings-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'settings-modal-overlay')">
+    <div class="modal">
+        <h2>Settings</h2>
+        <form id="settings-form" onsubmit="submitSettings(event)">
+            <label for="zoom-speed-input">Default Zoom Speed (0-7)</label>
+            <input id="zoom-speed-input" type="number" min="0" max="7" value="{{ settings.zoom_speed }}" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'settings-modal-overlay')">Cancel</button>
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="status">Ready</div>
+
+<script>
+    function closeModal(event, modalId) {
+        if (event && event.target.id !== modalId && event.target.tagName !== 'BUTTON') {
+            return;
+        }
+        document.getElementById(modalId).classList.remove('open');
+    }
+
+    function openNameModal(presetNum, currentName) {
+        document.getElementById('name-modal-preset-num').value = presetNum;
+        document.getElementById('name-modal-input').value = currentName;
+        document.getElementById('name-modal-overlay').classList.add('open');
+    }
+
+    function openSettingsModal() {
+        document.getElementById('settings-modal-overlay').classList.add('open');
+    }
+
+    async function submitPresetName(event) {
+        event.preventDefault();
+        const presetNum = document.getElementById('name-modal-preset-num').value;
+        const input = document.getElementById('name-modal-input');
+        const params = new URLSearchParams();
+        params.append('name', input.value);
+
+        const response = await fetch(`/preset/${presetNum}/name`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params,
+        });
+
+        const text = await response.text();
+        document.getElementById('status').innerText = text;
+
+        if (response.ok) {
+            document.getElementById(`preset-label-${presetNum}`).innerText = input.value.trim() || `Preset ${presetNum}`;
+            document.getElementById('name-modal-overlay').classList.remove('open');
+        }
+    }
+
+    async function submitSettings(event) {
+        event.preventDefault();
+        const zoomSpeed = document.getElementById('zoom-speed-input').value;
+        const params = new URLSearchParams();
+        params.append('zoom_speed', zoomSpeed);
+
+        const response = await fetch('/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params,
+        });
+
+        const text = await response.text();
+        document.getElementById('status').innerText = text;
+
+        if (response.ok) {
+            window.location.reload();
+        }
+    }
+</script>
+
+</body>
+</html>
