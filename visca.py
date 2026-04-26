@@ -7,15 +7,31 @@ import time
 
 
 class ViscaCamera:
-    def __init__(self, ip, port=1259, delay=0.05):
+    def __init__(self, ip, port=1259, delay=0.05, timeout=1.0):
         self.addr = (ip, port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.delay = delay  # command spacing
+        self.timeout = timeout
 
     def send(self, hex_string):
         command = bytes.fromhex(hex_string)
         self.sock.sendto(command, self.addr)
         time.sleep(self.delay)
+
+    def send_with_response(self, hex_string):
+        command = bytes.fromhex(hex_string)
+        self.sock.settimeout(self.timeout)
+        self.sock.sendto(command, self.addr)
+        data, _ = self.sock.recvfrom(1024)
+        time.sleep(self.delay)
+        return data
+
+    @staticmethod
+    def _decode_position_nibbles(nibbles):
+        value = 0
+        for nibble in nibbles:
+            value = (value << 4) | (nibble & 0x0F)
+        return value
 
     # --- Core VISCA Commands ---
 
@@ -44,6 +60,34 @@ class ViscaCamera:
 
     def stop(self, pan_speed=0, tilt_speed=0):
         self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="stop", tilt="stop")
+
+    def get_pan_tilt_position(self):
+        response = self.send_with_response("81 09 06 12 FF")
+
+        if len(response) < 11 or response[0] != 0x90 or response[1] != 0x50:
+            raise ValueError("Invalid pan/tilt response from camera")
+
+        pan = self._decode_position_nibbles(response[2:6])
+        tilt = self._decode_position_nibbles(response[6:10])
+        return {"pan": pan, "tilt": tilt}
+
+    def get_zoom_position(self):
+        response = self.send_with_response("81 09 04 47 FF")
+
+        if len(response) < 7 or response[0] != 0x90 or response[1] != 0x50:
+            raise ValueError("Invalid zoom response from camera")
+
+        zoom = self._decode_position_nibbles(response[2:6])
+        return {"zoom": zoom}
+
+    def get_position_feedback(self):
+        pan_tilt = self.get_pan_tilt_position()
+        zoom = self.get_zoom_position()
+        return {
+            "pan": pan_tilt["pan"],
+            "tilt": pan_tilt["tilt"],
+            "zoom": zoom["zoom"],
+        }
 
     # --- Named Shots (your workflow layer) ---
 

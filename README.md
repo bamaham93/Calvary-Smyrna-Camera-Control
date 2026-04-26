@@ -20,3 +20,8 @@ You can update both through the web UI:
 
 - `templates/index.html`: Flask template for the control UI.
 - `static/css/styles.css`: stylesheet for the UI.
+
+
+## Position Feedback
+
+The UI includes a **Position Feedback** panel that polls the camera for raw VISCA pan, tilt, and zoom position values once per second and allows manual refresh.

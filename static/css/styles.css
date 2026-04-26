@@ -170,3 +170,19 @@ button:active { background: #666; }
         height: 80px;
     }
 }
+
+
+.position-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+    color: #ddd;
+}
+
+.position-grid div {
+    background: #111;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+}
