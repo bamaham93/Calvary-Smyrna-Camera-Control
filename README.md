@@ -8,11 +8,13 @@ The app persists preset names and app settings in `config.json` in the project r
 
 - `preset_names`: persisted labels for presets 1-12.
 - `settings.zoom_speed`: default speed used by the zoom in/out buttons.
+- `settings.pan_speed`: default pan speed used by directional movement and preset recalls.
+- `settings.tilt_speed`: default tilt speed used by directional movement and preset recalls.
 
 You can update both through the web UI:
 
 - **Rename** opens a preset-name modal.
-- **Settings** opens a settings modal to update zoom speed.
+- **Settings** opens a settings modal to update zoom, pan, and tilt speeds.
 
 ## Project structure
 

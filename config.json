@@ -14,6 +14,8 @@
     "12": "Preset 12"
   },
   "settings": {
-    "zoom_speed": 2
+    "zoom_speed": 2,
+    "pan_speed": 8,
+    "tilt_speed": 8
   }
 }

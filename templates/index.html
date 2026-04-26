@@ -102,6 +102,10 @@
         <form id="settings-form" onsubmit="submitSettings(event)">
             <label for="zoom-speed-input">Default Zoom Speed (0-7)</label>
             <input id="zoom-speed-input" type="number" min="0" max="7" value="{{ settings.zoom_speed }}" required>
+            <label for="pan-speed-input">Default Pan Speed (0-24)</label>
+            <input id="pan-speed-input" type="number" min="0" max="24" value="{{ settings.pan_speed }}" required>
+            <label for="tilt-speed-input">Default Tilt Speed (0-20)</label>
+            <input id="tilt-speed-input" type="number" min="0" max="20" value="{{ settings.tilt_speed }}" required>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal(event, 'settings-modal-overlay')">Cancel</button>
                 <button type="submit">Save</button>
@@ -155,8 +159,12 @@
     async function submitSettings(event) {
         event.preventDefault();
         const zoomSpeed = document.getElementById('zoom-speed-input').value;
+        const panSpeed = document.getElementById('pan-speed-input').value;
+        const tiltSpeed = document.getElementById('tilt-speed-input').value;
         const params = new URLSearchParams();
         params.append('zoom_speed', zoomSpeed);
+        params.append('pan_speed', panSpeed);
+        params.append('tilt_speed', tiltSpeed);
 
         const response = await fetch('/settings', {
             method: 'POST',

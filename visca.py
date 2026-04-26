@@ -5,6 +5,7 @@ ViscaCamera class to control a camera using the VISCA protocol over UDP.
 import socket
 import time
 
+
 class ViscaCamera:
     def __init__(self, ip, port=1259, delay=0.05):
         self.addr = (ip, port)
@@ -41,8 +42,8 @@ class ViscaCamera:
     def zoom_stop(self):
         self.send("81 01 04 07 00 FF")
 
-    def stop(self):
-        self.send("81 01 06 01 00 00 03 03 FF")
+    def stop(self, pan_speed=0, tilt_speed=0):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="stop", tilt="stop")
 
     # --- Named Shots (your workflow layer) ---
 
@@ -57,14 +58,14 @@ class ViscaCamera:
 
     def piano_close(self):
         self.preset_recall(4)
-    
+
     # --- Camera Movement ---
 
     def move(self, pan_speed=8, tilt_speed=8, pan="stop", tilt="stop"):
         pan_dirs = {
-        "left": "01",
-        "right": "02",
-        "stop": "03",
+            "left": "01",
+            "right": "02",
+            "stop": "03",
         }
 
         tilt_dirs = {
@@ -83,31 +84,31 @@ class ViscaCamera:
             f"81 01 06 01 "
             f"{pan_speed:02X} {tilt_speed:02X} "
             f"{pan_dirs[pan]} {tilt_dirs[tilt]} FF"
-    )
+        )
 
-    def move_up(self):
-        self.move(tilt="up")
+    def move_up(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, tilt="up")
 
-    def move_down(self):
-        self.move(tilt="down")
+    def move_down(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, tilt="down")
 
-    def move_left(self):
-        self.move(pan="left")
+    def move_left(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="left")
 
-    def move_right(self):
-        self.move(pan="right")
+    def move_right(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="right")
 
-    def move_up_left(self):
-        self.move(pan="left", tilt="up")
+    def move_up_left(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="left", tilt="up")
 
-    def move_up_right(self):
-        self.move(pan="right", tilt="up")
+    def move_up_right(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="right", tilt="up")
 
-    def move_down_left(self):
-        self.move(pan="left", tilt="down")
+    def move_down_left(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="left", tilt="down")
 
-    def move_down_right(self):
-        self.move(pan="right", tilt="down")
+    def move_down_right(self, pan_speed=8, tilt_speed=8):
+        self.move(pan_speed=pan_speed, tilt_speed=tilt_speed, pan="right", tilt="down")
 
     # --- Cleanup ---
 
