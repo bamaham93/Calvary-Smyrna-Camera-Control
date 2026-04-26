@@ -182,7 +182,9 @@ class CameraAppTests(unittest.TestCase):
         response = self.client.get("/static/css/styles.css")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(".preset-grid", response.get_data(as_text=True))
+        css = response.get_data(as_text=True)
+        self.assertIn(".preset-grid", css)
+        self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr));", css)
 
     def test_invalid_preset_for_set_and_name(self):
         response_set = self.client.post("/preset/99/set")
