@@ -128,6 +128,13 @@ class CameraAppTests(unittest.TestCase):
         self.assertIn("settings-modal-overlay", page)
         self.assertIn('/zoom/in/4', page)
         self.assertIn('/zoom/out/4', page)
+        self.assertIn('/static/css/styles.css', page)
+
+    def test_static_stylesheet_is_served(self):
+        response = self.client.get("/static/css/styles.css")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(".preset-grid", response.get_data(as_text=True))
 
     def test_invalid_preset_for_set_and_name(self):
         response_set = self.client.post("/preset/99/set")
