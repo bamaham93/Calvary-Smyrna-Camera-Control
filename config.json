@@ -1,0 +1,19 @@
+{
+  "preset_names": {
+    "1": "Preset 1",
+    "2": "Preset 2",
+    "3": "Preset 3",
+    "4": "Preset 4",
+    "5": "Preset 5",
+    "6": "Preset 6",
+    "7": "Preset 7",
+    "8": "Preset 8",
+    "9": "Preset 9",
+    "10": "Preset 10",
+    "11": "Preset 11",
+    "12": "Preset 12"
+  },
+  "settings": {
+    "zoom_speed": 2
+  }
+}
