@@ -6,56 +6,79 @@ from visca import ViscaCamera
 
 app = Flask(__name__)
 cam = ViscaCamera("10.238.171.114")
-PRESET_NAMES_FILE = Path(__file__).with_name("preset_names.json")
+CONFIG_FILE = Path(__file__).with_name("config.json")
 DEFAULT_PRESET_RANGE = range(1, 13)
+DEFAULT_SETTINGS = {"zoom_speed": 2}
 
 
 def default_preset_name(preset_num):
     return f"Preset {preset_num}"
 
 
-def load_preset_names(file_path=None):
-    file_path = file_path or PRESET_NAMES_FILE
-    names = {preset: default_preset_name(preset) for preset in DEFAULT_PRESET_RANGE}
-
-    if not file_path.exists():
-        return names
-
-    try:
-        persisted_names = json.loads(file_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return names
-
-    if not isinstance(persisted_names, dict):
-        return names
-
-    for key, value in persisted_names.items():
-        try:
-            preset_num = int(key)
-        except (TypeError, ValueError):
-            continue
-
-        if preset_num not in DEFAULT_PRESET_RANGE:
-            continue
-
-        cleaned_value = str(value).strip()
-        if cleaned_value:
-            names[preset_num] = cleaned_value
-
-    return names
-
-
-def save_preset_names(names, file_path=None):
-    file_path = file_path or PRESET_NAMES_FILE
-    data = {str(preset): name for preset, name in names.items()}
-    file_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+def default_preset_names():
+    return {preset: default_preset_name(preset) for preset in DEFAULT_PRESET_RANGE}
 
 
 def sanitize_preset_name(name, preset_num):
-    cleaned_name = name.strip()[:40]
+    cleaned_name = str(name).strip()[:40]
     if not cleaned_name:
         return default_preset_name(preset_num)
     return cleaned_name
+
+
+def sanitize_zoom_speed(speed):
+    try:
+        cleaned_speed = int(speed)
+    except (TypeError, ValueError):
+        return DEFAULT_SETTINGS["zoom_speed"]
+
+    return max(0, min(7, cleaned_speed))
+
+
+def load_config(file_path=None):
+    file_path = file_path or CONFIG_FILE
+    names = default_preset_names()
+    settings = dict(DEFAULT_SETTINGS)
+
+    if not file_path.exists():
+        return names, settings
+
+    try:
+        persisted = json.loads(file_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return names, settings
+
+    if not isinstance(persisted, dict):
+        return names, settings
+
+    persisted_names = persisted.get("preset_names", {})
+    if isinstance(persisted_names, dict):
+        for key, value in persisted_names.items():
+            try:
+                preset_num = int(key)
+            except (TypeError, ValueError):
+                continue
+
+            if preset_num not in DEFAULT_PRESET_RANGE:
+                continue
+
+            cleaned_name = sanitize_preset_name(value, preset_num)
+            names[preset_num] = cleaned_name
+
+    persisted_settings = persisted.get("settings", {})
+    if isinstance(persisted_settings, dict):
+        settings["zoom_speed"] = sanitize_zoom_speed(persisted_settings.get("zoom_speed"))
+
+    return names, settings
+
+
+def save_config(names, settings, file_path=None):
+    file_path = file_path or CONFIG_FILE
+    data = {
+        "preset_names": {str(preset): name for preset, name in names.items()},
+        "settings": {"zoom_speed": sanitize_zoom_speed(settings.get("zoom_speed"))},
+    }
+    file_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
 
 def preset_in_range(preset_num):
@@ -68,7 +91,7 @@ def safe_recall(preset):
     cam.preset_recall(preset)
 
 
-preset_names = load_preset_names()
+preset_names, settings = load_config()
 
 
 @app.route("/preset/<int:num>")
@@ -102,10 +125,25 @@ def preset_name(num):
     if requested_name is None:
         return "Name is required", 400
 
-    cleaned_name = sanitize_preset_name(str(requested_name), num)
+    cleaned_name = sanitize_preset_name(requested_name, num)
     preset_names[num] = cleaned_name
-    save_preset_names(preset_names)
+    save_config(preset_names, settings)
     return f"Updated preset {num} name to {cleaned_name}"
+
+
+@app.route("/settings", methods=["POST"])
+def update_settings():
+    requested_zoom_speed = request.form.get("zoom_speed")
+    if requested_zoom_speed is None and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        requested_zoom_speed = payload.get("zoom_speed")
+
+    if requested_zoom_speed is None:
+        return "zoom_speed is required", 400
+
+    settings["zoom_speed"] = sanitize_zoom_speed(requested_zoom_speed)
+    save_config(preset_names, settings)
+    return f"Updated settings: zoom speed {settings['zoom_speed']}"
 
 
 @app.route("/zoom/in/<int:speed>")
@@ -187,6 +225,13 @@ def home():
             letter-spacing: 1px;
         }
 
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
         .container {
             display: flex;
             flex-wrap: wrap;
@@ -235,24 +280,11 @@ def home():
             font-size: 14px;
         }
 
-        .preset-actions {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 6px;
-        }
-
-        .preset-actions input {
-            background: #222;
-            color: #fff;
-            border: 1px solid #444;
-            border-radius: 6px;
-            padding: 6px;
-            min-width: 0;
-        }
-
-        .preset-actions button {
+        .preset-edit-btn {
+            width: 100%;
+            font-size: 13px;
             padding: 8px;
-            font-size: 14px;
+            background: #424242;
         }
 
         .preset-set-btn {
@@ -285,6 +317,51 @@ def home():
 
         .center-stop { background: #aa3333; }
 
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .modal-overlay.open { display: flex; }
+
+        .modal {
+            width: min(90vw, 420px);
+            background: #1b1b1b;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .modal label {
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        .modal input {
+            background: #222;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 15px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
         #status {
             margin-top: 12px;
             font-size: 13px;
@@ -306,7 +383,10 @@ def home():
 </head>
 <body>
 
-<h1>Camera Control</h1>
+<div class="header-row">
+    <h1>Camera Control</h1>
+    <button type="button" onclick="openSettingsModal()">Settings</button>
+</div>
 
 <div class="container">
 
@@ -315,11 +395,12 @@ def home():
         <div class="preset-grid">
             {% for preset in presets %}
             <div class="preset-card">
-                <button class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
-                <form class="preset-actions" hx-post="/preset/{{ preset.num }}/name" hx-target="#status" hx-swap="innerText">
-                    <input type="text" name="name" value="{{ preset.name }}" maxlength="40">
-                    <button type="submit">Save</button>
-                </form>
+                <button id="preset-label-{{ preset.num }}" class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
+                <button
+                    class="preset-edit-btn"
+                    type="button"
+                    onclick="openNameModal({{ preset.num }}, '{{ preset.name|replace("'", "&#39;") }}')"
+                >Rename</button>
                 <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText">Set Current View</button>
             </div>
             {% endfor %}
@@ -368,20 +449,111 @@ def home():
     <div class="panel">
         <h2>Zoom</h2>
         <div class="zoom-controls">
-            <button hx-get="/zoom/in/2" hx-target="#status" hx-swap="innerText">＋</button>
+            <button hx-get="/zoom/in/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">＋</button>
             <button hx-get="/zoom/stop" hx-target="#status" hx-swap="innerText">■</button>
-            <button hx-get="/zoom/out/2" hx-target="#status" hx-swap="innerText">－</button>
+            <button hx-get="/zoom/out/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">－</button>
         </div>
     </div>
 
 </div>
 
+<div id="name-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'name-modal-overlay')">
+    <div class="modal">
+        <h2>Rename Preset</h2>
+        <form id="name-modal-form" onsubmit="submitPresetName(event)">
+            <input type="hidden" id="name-modal-preset-num" value="">
+            <label for="name-modal-input">Name</label>
+            <input id="name-modal-input" type="text" maxlength="40" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'name-modal-overlay')">Cancel</button>
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="settings-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'settings-modal-overlay')">
+    <div class="modal">
+        <h2>Settings</h2>
+        <form id="settings-form" onsubmit="submitSettings(event)">
+            <label for="zoom-speed-input">Default Zoom Speed (0-7)</label>
+            <input id="zoom-speed-input" type="number" min="0" max="7" value="{{ settings.zoom_speed }}" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'settings-modal-overlay')">Cancel</button>
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="status">Ready</div>
+
+<script>
+    function closeModal(event, modalId) {
+        if (event && event.target.id !== modalId && event.target.tagName !== 'BUTTON') {
+            return;
+        }
+        document.getElementById(modalId).classList.remove('open');
+    }
+
+    function openNameModal(presetNum, currentName) {
+        document.getElementById('name-modal-preset-num').value = presetNum;
+        document.getElementById('name-modal-input').value = currentName;
+        document.getElementById('name-modal-overlay').classList.add('open');
+    }
+
+    function openSettingsModal() {
+        document.getElementById('settings-modal-overlay').classList.add('open');
+    }
+
+    async function submitPresetName(event) {
+        event.preventDefault();
+        const presetNum = document.getElementById('name-modal-preset-num').value;
+        const input = document.getElementById('name-modal-input');
+        const params = new URLSearchParams();
+        params.append('name', input.value);
+
+        const response = await fetch(`/preset/${presetNum}/name`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params,
+        });
+
+        const text = await response.text();
+        document.getElementById('status').innerText = text;
+
+        if (response.ok) {
+            document.getElementById(`preset-label-${presetNum}`).innerText = input.value.trim() || `Preset ${presetNum}`;
+            document.getElementById('name-modal-overlay').classList.remove('open');
+        }
+    }
+
+    async function submitSettings(event) {
+        event.preventDefault();
+        const zoomSpeed = document.getElementById('zoom-speed-input').value;
+        const params = new URLSearchParams();
+        params.append('zoom_speed', zoomSpeed);
+
+        const response = await fetch('/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params,
+        });
+
+        const text = await response.text();
+        document.getElementById('status').innerText = text;
+
+        if (response.ok) {
+            window.location.reload();
+        }
+    }
+</script>
 
 </body>
 </html>
 """,
         presets=presets,
+        settings=settings,
     )
 
 
