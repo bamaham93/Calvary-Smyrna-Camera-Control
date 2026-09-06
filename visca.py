@@ -19,12 +19,26 @@ class ViscaCamera:
         time.sleep(self.delay)
 
     def send_with_response(self, hex_string):
+        """Send a command and wait for its reply, skipping over any stray
+        ACK/Completion datagrams (3 bytes: `z0 4y FF` / `z0 5y FF`) the
+        camera may have sent for earlier fire-and-forget commands (move,
+        preset recall, zoom, ...) that nothing ever read. Since camera I/O
+        is fully serialized (one command in flight at a time), the first
+        datagram longer than that is necessarily the reply to this call."""
         command = bytes.fromhex(hex_string)
-        self.sock.settimeout(self.timeout)
         self.sock.sendto(command, self.addr)
-        data, _ = self.sock.recvfrom(1024)
-        time.sleep(self.delay)
-        return data
+
+        deadline = time.time() + self.timeout
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise TimeoutError("No inquiry reply received from camera")
+
+            self.sock.settimeout(remaining)
+            data, _ = self.sock.recvfrom(1024)
+            if len(data) > 3:
+                time.sleep(self.delay)
+                return data
 
     @staticmethod
     def _decode_position_nibbles(nibbles):
