@@ -97,6 +97,30 @@
         </form>
     </div>
 
+    <div class="panel">
+        <h2>PIP Position Tuning</h2>
+        <p class="hint">For dialing in the corner button values (ATEM_PIP_CORNERS in app.py) &mdash; not needed for normal use. These position/size units aren't documented anywhere, so trial and error here is the actual way to find them. Try a value, look at the output, adjust.</p>
+        <form onsubmit="submitPipRaw(event)" class="goto-form">
+            <div>
+                <label for="pip-position-x">Position X</label>
+                <input id="pip-position-x" type="number" step="0.5" required>
+            </div>
+            <div>
+                <label for="pip-position-y">Position Y</label>
+                <input id="pip-position-y" type="number" step="0.5" required>
+            </div>
+            <div>
+                <label for="pip-size-x">Size X (0-1)</label>
+                <input id="pip-size-x" type="number" step="0.05" min="0" max="1" value="0.25" required>
+            </div>
+            <div>
+                <label for="pip-size-y">Size Y (0-1)</label>
+                <input id="pip-size-y" type="number" step="0.05" min="0" max="1" value="0.25" required>
+            </div>
+            <button type="submit">Set</button>
+        </form>
+    </div>
+
     <div class="panel danger-panel">
         <h2>Camera Presets (1&ndash;12)</h2>
         <p class="hint">Stored on the camera itself. "Set Current View" overwrites the preset permanently.</p>
@@ -219,6 +243,23 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({pan, tilt, zoom}),
+        });
+
+        const text = await response.text();
+        setStatus(text);
+    }
+
+    async function submitPipRaw(event) {
+        event.preventDefault();
+        const position_x = document.getElementById('pip-position-x').value;
+        const position_y = document.getElementById('pip-position-y').value;
+        const size_x = document.getElementById('pip-size-x').value;
+        const size_y = document.getElementById('pip-size-y').value;
+
+        const response = await fetch('/atem/pip/raw', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({position_x, position_y, size_x, size_y}),
         });
 
         const text = await response.text();

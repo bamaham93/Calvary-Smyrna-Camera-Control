@@ -593,6 +593,37 @@ class CameraAppTests(unittest.TestCase):
         self.assertIn(("setKeyerFillSource", 0, 0, 3), camera_app.atem.calls)
         self.assertEqual(camera_app.atem.keyer[0][0].fillSource.value, 3)
 
+    def test_atem_pip_raw_sets_exact_values(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post(
+            "/atem/pip/raw",
+            json={"position_x": -14.5, "position_y": 6.5, "size_x": 0.3, "size_y": 0.35},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("setKeyDVEPositionX", 0, 0, -14.5), camera_app.atem.calls)
+        self.assertIn(("setKeyDVEPositionY", 0, 0, 6.5), camera_app.atem.calls)
+        self.assertIn(("setKeyDVESizeX", 0, 0, 0.3), camera_app.atem.calls)
+        self.assertIn(("setKeyDVESizeY", 0, 0, 0.35), camera_app.atem.calls)
+
+    def test_atem_pip_raw_defaults_size_when_omitted(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/pip/raw", json={"position_x": 1, "position_y": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("setKeyDVESizeX", 0, 0, camera_app.ATEM_PIP_SIZE), camera_app.atem.calls)
+        self.assertIn(("setKeyDVESizeY", 0, 0, camera_app.ATEM_PIP_SIZE), camera_app.atem.calls)
+
+    def test_atem_pip_raw_requires_numeric_position(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/pip/raw", json={"position_x": "abc", "position_y": 2})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(camera_app.atem.calls, [])
+
     def test_atem_pip_on_and_off(self):
         camera_app.atem.connected = True
 
