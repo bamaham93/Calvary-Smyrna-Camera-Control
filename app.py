@@ -491,6 +491,45 @@ def atem_set_program(source):
     return f"Program set to {atem_input_names.get(source, default_atem_input_name(source))}"
 
 
+@app.route("/atem/cut", methods=["POST"])
+def atem_cut():
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.execCutME, 0, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return "Cut"
+
+
+@app.route("/atem/auto", methods=["POST"])
+def atem_auto():
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.execAutoME, 0, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return "Auto transition"
+
+
+@app.route("/atem/ftb", methods=["POST"])
+def atem_ftb():
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.execFadeToBlackME, 0, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return "Fade to black"
+
+
 @app.route("/atem/input/<int:num>/name", methods=["POST"])
 def atem_input_name(num):
     if num not in DEFAULT_ATEM_INPUT_RANGE:
