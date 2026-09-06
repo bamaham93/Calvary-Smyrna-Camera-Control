@@ -42,6 +42,22 @@ class FakeAtemInputSlot:
         self.videoSource = type("FakeVideoSource", (), {"value": value})()
 
 
+class FakeAtemOnAir:
+    def __init__(self, enabled=False):
+        self.enabled = enabled
+
+
+class FakeAtemFillSource:
+    def __init__(self, value=None):
+        self.value = value
+
+
+class FakeAtemKeyer:
+    def __init__(self):
+        self.onAir = FakeAtemOnAir()
+        self.fillSource = FakeAtemFillSource()
+
+
 class FakeAtem:
     def __init__(self):
         self.calls = []
@@ -49,6 +65,7 @@ class FakeAtem:
         self.atemModel = ""
         self.programInput = {0: FakeAtemInputSlot()}
         self.previewInput = {0: FakeAtemInputSlot()}
+        self.keyer = {0: {0: FakeAtemKeyer()}}
 
     def connect(self, ip):
         self.calls.append(("connect", ip))
@@ -68,6 +85,32 @@ class FakeAtem:
 
     def execFadeToBlackME(self, mE):
         self.calls.append(("execFadeToBlackME", mE))
+
+    def setKeyerType(self, mE, keyer, type_):
+        self.calls.append(("setKeyerType", mE, keyer, type_))
+
+    def setKeyerMasked(self, mE, keyer, masked):
+        self.calls.append(("setKeyerMasked", mE, keyer, masked))
+
+    def setKeyDVESizeX(self, mE, keyer, sizeX):
+        self.calls.append(("setKeyDVESizeX", mE, keyer, sizeX))
+
+    def setKeyDVESizeY(self, mE, keyer, sizeY):
+        self.calls.append(("setKeyDVESizeY", mE, keyer, sizeY))
+
+    def setKeyDVEPositionX(self, mE, keyer, positionX):
+        self.calls.append(("setKeyDVEPositionX", mE, keyer, positionX))
+
+    def setKeyDVEPositionY(self, mE, keyer, positionY):
+        self.calls.append(("setKeyDVEPositionY", mE, keyer, positionY))
+
+    def setKeyerFillSource(self, mE, keyer, fillSource):
+        self.calls.append(("setKeyerFillSource", mE, keyer, fillSource))
+        self.keyer[mE][keyer].fillSource.value = fillSource
+
+    def setKeyerOnAirEnabled(self, mE, keyer, enabled):
+        self.calls.append(("setKeyerOnAirEnabled", mE, keyer, enabled))
+        self.keyer[mE][keyer].onAir.enabled = enabled
 
 
 class CameraAppTests(unittest.TestCase):
@@ -431,7 +474,17 @@ class CameraAppTests(unittest.TestCase):
         response = self.client.get("/atem/state")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json, {"connected": False, "program": None, "preview": None, "model": None})
+        self.assertEqual(
+            response.json,
+            {
+                "connected": False,
+                "program": None,
+                "preview": None,
+                "model": None,
+                "pip_on": False,
+                "pip_source": None,
+            },
+        )
 
     def test_atem_state_when_connected(self):
         camera_app.atem.connected = True
@@ -439,12 +492,22 @@ class CameraAppTests(unittest.TestCase):
         camera_app.atem.programInput[0].videoSource.value = 2
         camera_app.atem.previewInput[0].videoSource.value = 3
 
+        camera_app.atem.keyer[0][0].onAir.enabled = True
+        camera_app.atem.keyer[0][0].fillSource.value = 4
+
         response = self.client.get("/atem/state")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json,
-            {"connected": True, "program": 2, "preview": 3, "model": "ATEM Mini Pro"},
+            {
+                "connected": True,
+                "program": 2,
+                "preview": 3,
+                "model": "ATEM Mini Pro",
+                "pip_on": True,
+                "pip_source": 4,
+            },
         )
 
     def test_atem_set_program_requires_connection(self):
@@ -491,6 +554,57 @@ class CameraAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(("execFadeToBlackME", 0), camera_app.atem.calls)
+
+    def test_atem_pip_corner_moves_pip(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/pip/corner/top-left")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("top-left", response.get_data(as_text=True))
+        self.assertIn(("setKeyerType", 0, 0, camera_app.ATEM_KEYER_TYPE_DVE), camera_app.atem.calls)
+        self.assertIn(("setKeyerMasked", 0, 0, False), camera_app.atem.calls)
+        self.assertIn(("setKeyDVESizeX", 0, 0, camera_app.ATEM_PIP_SIZE), camera_app.atem.calls)
+        self.assertIn(("setKeyDVESizeY", 0, 0, camera_app.ATEM_PIP_SIZE), camera_app.atem.calls)
+        expected_x, expected_y = camera_app.ATEM_PIP_CORNERS["top-left"]
+        self.assertIn(("setKeyDVEPositionX", 0, 0, expected_x), camera_app.atem.calls)
+        self.assertIn(("setKeyDVEPositionY", 0, 0, expected_y), camera_app.atem.calls)
+
+    def test_atem_pip_corner_rejects_invalid_corner(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/pip/corner/middle")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(camera_app.atem.calls, [])
+
+    def test_atem_pip_corner_requires_connection(self):
+        response = self.client.post("/atem/pip/corner/top-left")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(camera_app.atem.calls, [])
+
+    def test_atem_pip_source_sets_fill_source(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/pip/source/3")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("setKeyerFillSource", 0, 0, 3), camera_app.atem.calls)
+        self.assertEqual(camera_app.atem.keyer[0][0].fillSource.value, 3)
+
+    def test_atem_pip_on_and_off(self):
+        camera_app.atem.connected = True
+
+        response_on = self.client.post("/atem/pip/on")
+        self.assertEqual(response_on.status_code, 200)
+        self.assertIn(("setKeyerOnAirEnabled", 0, 0, True), camera_app.atem.calls)
+        self.assertTrue(camera_app.atem.keyer[0][0].onAir.enabled)
+
+        response_off = self.client.post("/atem/pip/off")
+        self.assertEqual(response_off.status_code, 200)
+        self.assertIn(("setKeyerOnAirEnabled", 0, 0, False), camera_app.atem.calls)
+        self.assertFalse(camera_app.atem.keyer[0][0].onAir.enabled)
 
     def test_atem_input_name_updates_and_persists(self):
         response = self.client.post("/atem/input/1/name", data={"name": "Pulpit Wide"})

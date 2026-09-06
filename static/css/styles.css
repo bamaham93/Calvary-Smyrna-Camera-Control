@@ -56,6 +56,19 @@ h2 {
     min-width: 260px;
 }
 
+.panel-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1 1 280px;
+    min-width: 260px;
+}
+
+.panel-stack .panel {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
 button {
     border: none;
     border-radius: 8px;
@@ -113,6 +126,50 @@ button:active { background: #666; }
 
 .ftb-btn { background: #6a2a2a; }
 .ftb-btn:hover { background: #8a3232; }
+
+.atem-pip-controls {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #333;
+}
+
+.atem-pip-corners {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.atem-pip-corners button {
+    font-size: 13px;
+}
+
+.atem-pip-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.atem-pip-row select {
+    flex: 1;
+    background: #222;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 14px;
+}
+
+.atem-pip-row button {
+    flex: 0 0 auto;
+    font-size: 13px;
+}
+
+#atem-pip-on-btn.active,
+#atem-pip-off-btn.active {
+    background: #25405e;
+    box-shadow: 0 0 0 2px #3a7bd5 inset;
+}
 
 .atem-input-btn.live {
     background: #aa2222;

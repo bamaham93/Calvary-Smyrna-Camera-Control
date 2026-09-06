@@ -17,6 +17,7 @@
 
 <div class="container">
 
+    <div class="panel-stack">
     <div class="panel">
         <h2>Pan / Tilt</h2>
         <div class="dpad">
@@ -63,6 +64,7 @@
             <button hx-get="/zoom/stop" hx-target="#status" hx-swap="innerText">■</button>
             <button hx-get="/zoom/out/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">－</button>
         </div>
+    </div>
     </div>
 
     <div class="panel">

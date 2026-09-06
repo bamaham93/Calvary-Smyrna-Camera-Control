@@ -19,6 +19,17 @@ DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8, "position_
 DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
 DEFAULT_ATEM = {"ip": ""}
 DEFAULT_ATEM_INPUT_RANGE = range(1, 5)
+ATEM_KEYER_TYPE_DVE = 3  # PyATEMMax's ATEMKeyerTypes.dVE
+# Size (0.0-1.0, documented) and position for each PIP corner. Position
+# magnitude is a best-effort estimate, not something documented anywhere -
+# expect to tune these once they're visible on real hardware.
+ATEM_PIP_SIZE = 0.25
+ATEM_PIP_CORNERS = {
+    "top-left": (-0.7, 0.7),
+    "top-right": (0.7, 0.7),
+    "bottom-left": (-0.7, -0.7),
+    "bottom-right": (0.7, -0.7),
+}
 
 
 def default_preset_name(preset_num):
@@ -466,14 +477,26 @@ def update_settings():
 @app.route("/atem/state")
 def atem_state():
     if not atem.connected:
-        return jsonify({"connected": False, "program": None, "preview": None, "model": None})
+        return jsonify(
+            {
+                "connected": False,
+                "program": None,
+                "preview": None,
+                "model": None,
+                "pip_on": False,
+                "pip_source": None,
+            }
+        )
 
+    pip_keyer = atem.keyer[0][0]
     return jsonify(
         {
             "connected": True,
             "program": atem.programInput[0].videoSource.value,
             "preview": atem.previewInput[0].videoSource.value,
             "model": atem.atemModel or None,
+            "pip_on": pip_keyer.onAir.enabled,
+            "pip_source": pip_keyer.fillSource.value,
         }
     )
 
@@ -528,6 +551,70 @@ def atem_ftb():
         return jsonify({"error": "ATEM did not respond in time"}), 503
 
     return "Fade to black"
+
+
+def move_pip_to_corner(position_x, position_y):
+    atem.setKeyerType(0, 0, ATEM_KEYER_TYPE_DVE)
+    atem.setKeyerMasked(0, 0, False)
+    atem.setKeyDVESizeX(0, 0, ATEM_PIP_SIZE)
+    atem.setKeyDVESizeY(0, 0, ATEM_PIP_SIZE)
+    atem.setKeyDVEPositionX(0, 0, position_x)
+    atem.setKeyDVEPositionY(0, 0, position_y)
+
+
+@app.route("/atem/pip/corner/<corner>", methods=["POST"])
+def atem_pip_corner(corner):
+    if corner not in ATEM_PIP_CORNERS:
+        return "Invalid corner", 400
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    position_x, position_y = ATEM_PIP_CORNERS[corner]
+    try:
+        atem_worker.submit(move_pip_to_corner, position_x, position_y, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return f"PIP moved to {corner}"
+
+
+@app.route("/atem/pip/source/<int:source>", methods=["POST"])
+def atem_pip_source(source):
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.setKeyerFillSource, 0, 0, source, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return f"PIP source set to {atem_input_names.get(source, default_atem_input_name(source))}"
+
+
+@app.route("/atem/pip/on", methods=["POST"])
+def atem_pip_on():
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.setKeyerOnAirEnabled, 0, 0, True, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return "PIP on"
+
+
+@app.route("/atem/pip/off", methods=["POST"])
+def atem_pip_off():
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.setKeyerOnAirEnabled, 0, 0, False, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return "PIP off"
 
 
 @app.route("/atem/input/<int:num>/name", methods=["POST"])

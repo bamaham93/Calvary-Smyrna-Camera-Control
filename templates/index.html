@@ -55,9 +55,29 @@
             <button hx-post="/atem/auto" hx-target="#status" hx-swap="innerText">AUTO</button>
             <button class="ftb-btn" hx-post="/atem/ftb" hx-target="#status" hx-swap="innerText" hx-confirm="Fade the program output to black?">FTB</button>
         </div>
+
+        <div class="atem-pip-controls">
+            <div class="atem-pip-corners">
+                <button hx-post="/atem/pip/corner/top-left" hx-target="#status" hx-swap="innerText">↖ Top Left</button>
+                <button hx-post="/atem/pip/corner/top-right" hx-target="#status" hx-swap="innerText">↗ Top Right</button>
+                <button hx-post="/atem/pip/corner/bottom-left" hx-target="#status" hx-swap="innerText">↙ Bottom Left</button>
+                <button hx-post="/atem/pip/corner/bottom-right" hx-target="#status" hx-swap="innerText">↘ Bottom Right</button>
+            </div>
+            <div class="atem-pip-row">
+                <select id="atem-pip-source-select" onchange="submitAtemPipSource(this.value)">
+                    {% for input in atem_inputs %}
+                    <option value="{{ input.num }}">{{ input.name }}</option>
+                    {% endfor %}
+                </select>
+                <button id="atem-pip-on-btn" hx-post="/atem/pip/on" hx-target="#status" hx-swap="innerText">PIP ON</button>
+                <button id="atem-pip-off-btn" hx-post="/atem/pip/off" hx-target="#status" hx-swap="innerText">PIP OFF</button>
+            </div>
+        </div>
+
         <p id="atem-status" class="hint">Checking connection...</p>
     </div>
 
+    <div class="panel-stack">
     <div class="panel">
         <h2>Pan / Tilt</h2>
         <div class="dpad">
@@ -105,7 +125,7 @@
             <button hx-get="/zoom/out/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">－</button>
         </div>
     </div>
-
+    </div>
 
     <div class="panel">
         <h2>Position Feedback</h2>
@@ -264,9 +284,25 @@
 
             const previewBtn = document.getElementById(`atem-input-btn-${payload.preview}`);
             if (previewBtn) previewBtn.classList.add('preview');
+
+            const pipOnBtn = document.getElementById('atem-pip-on-btn');
+            const pipOffBtn = document.getElementById('atem-pip-off-btn');
+            if (pipOnBtn) pipOnBtn.classList.toggle('active', !!payload.pip_on);
+            if (pipOffBtn) pipOffBtn.classList.toggle('active', !payload.pip_on);
+
+            const pipSourceSelect = document.getElementById('atem-pip-source-select');
+            if (pipSourceSelect && payload.pip_source != null && document.activeElement !== pipSourceSelect) {
+                pipSourceSelect.value = payload.pip_source;
+            }
         } catch (error) {
             statusEl.innerText = 'Unable to reach switcher status';
         }
+    }
+
+    async function submitAtemPipSource(source) {
+        const response = await fetch(`/atem/pip/source/${source}`, {method: 'POST'});
+        const text = await response.text();
+        setStatus(text);
     }
 
     window.addEventListener('load', () => {

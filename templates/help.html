@@ -38,7 +38,7 @@
         <h3>Main Control Page</h3>
         <ul>
             <li><strong>Presets</strong> &mdash; click a name to recall that shot. "Rename" changes its label.</li>
-            <li><strong>Switcher</strong> &mdash; click an input to put it on air (Program) immediately on the ATEM. A red highlight means that input is currently live (Program); green means it's on Preview. CUT/AUTO transition whatever's on Preview to Program; FTB fades the whole output to black. Only shown as connected once an ATEM IP is set in Settings and it's reachable.</li>
+            <li><strong>Switcher</strong> &mdash; click an input to put it on air (Program) immediately on the ATEM. A red highlight means that input is currently live (Program); green means it's on Preview. CUT/AUTO transition whatever's on Preview to Program; FTB fades the whole output to black. The Picture-in-Picture row picks a corner, a source, and On/Off for a small inset box on top of Program. Only shown as connected once an ATEM IP is set in Settings and it's reachable.</li>
             <li><strong>Pan / Tilt</strong> &mdash; press and hold a direction; it stops on release.</li>
             <li><strong>Zoom</strong> &mdash; in / stop / out, at the speed set in Settings.</li>
             <li><strong>Position Feedback</strong> &mdash; the camera's current raw pan/tilt/zoom values (see note on units below).</li>
@@ -175,6 +175,24 @@
                 <td>&mdash;</td>
                 <td>Toggles the ATEM's Fade-to-Black on the whole output.</td>
             </tr>
+            <tr>
+                <td>Move Picture-in-Picture to a corner</td>
+                <td>POST <code>/atem/pip/corner/&lt;corner&gt;</code></td>
+                <td>&mdash;</td>
+                <td><code>corner</code>: <code>top-left</code>, <code>top-right</code>, <code>bottom-left</code>, <code>bottom-right</code>. Also turns the PIP into a plain DVE box (no mask).</td>
+            </tr>
+            <tr>
+                <td>Set PIP source</td>
+                <td>POST <code>/atem/pip/source/&lt;num&gt;</code></td>
+                <td>&mdash;</td>
+                <td>Which input appears inside the PIP box.</td>
+            </tr>
+            <tr>
+                <td>PIP on / off</td>
+                <td>POST <code>/atem/pip/on</code>, POST <code>/atem/pip/off</code></td>
+                <td>&mdash;</td>
+                <td>Reflected in <code>/atem/state</code> as <code>pip_on</code> / <code>pip_source</code>.</td>
+            </tr>
         </table>
         </div>
 
@@ -237,6 +255,7 @@
             <li><strong>Config lives in <code>config.json</code></strong> next to the app &mdash; presets, local positions, and settings are all there. Back it up before making bulk changes if you want an easy way back.</li>
             <li><strong>This app should keep running</strong> for other software (FreeShow, Companion, etc.) to reach it &mdash; if it's restarted, anything pointed at it will start working again automatically once it's back up, no reconfiguration needed on the other end.</li>
             <li><strong>Switcher panel stuck on "Not connected"?</strong> Check the ATEM IP in Settings, and that this app and the ATEM are on the same network. It reconnects automatically once reachable &mdash; no need to restart the app.</li>
+            <li><strong>PIP corner buttons put it in the wrong spot?</strong> The exact position/size values aren't documented anywhere and were a best-effort estimate rather than something verified against real hardware &mdash; if a corner looks off, that's a numbers-tuning issue, not a sign the feature is broken.</li>
         </ul>
     </div>
 
