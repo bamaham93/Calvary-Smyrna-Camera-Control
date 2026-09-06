@@ -36,6 +36,24 @@
     </div>
 
     <div class="panel">
+        <h2>Switcher</h2>
+        <div class="preset-grid" id="atem-inputs-grid">
+            {% for input in atem_inputs %}
+            <div class="preset-card">
+                <span class="preset-id">#{{ input.num }}</span>
+                <button id="atem-input-btn-{{ input.num }}" class="preset-recall atem-input-btn" hx-post="/atem/program/{{ input.num }}" hx-target="#status" hx-swap="innerText">{{ input.name }}</button>
+                <button
+                    class="preset-edit-btn"
+                    type="button"
+                    onclick="openAtemNameModal({{ input.num }}, '{{ input.name|replace("'", "&#39;") }}')"
+                >Rename</button>
+            </div>
+            {% endfor %}
+        </div>
+        <p id="atem-status" class="hint">Checking connection...</p>
+    </div>
+
+    <div class="panel">
         <h2>Pan / Tilt</h2>
         <div class="dpad">
             <button hx-get="/move/up-left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
@@ -111,6 +129,21 @@
     </div>
 </div>
 
+<div id="atem-name-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'atem-name-modal-overlay')">
+    <div class="modal">
+        <h2>Rename Input</h2>
+        <form id="atem-name-modal-form" onsubmit="submitAtemInputName(event)">
+            <input type="hidden" id="atem-name-modal-input-num" value="">
+            <label for="atem-name-modal-input">Name</label>
+            <input id="atem-name-modal-input" type="text" maxlength="40" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'atem-name-modal-overlay')">Cancel</button>
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="settings-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'settings-modal-overlay')">
     <div class="modal">
         <h2>Settings</h2>
@@ -129,6 +162,9 @@
             <input id="camera-ip-input" type="text" value="{{ camera.ip }}" required>
             <label for="camera-port-input">Camera Port</label>
             <input id="camera-port-input" type="number" min="1" max="65535" value="{{ camera.port }}" required>
+            <hr>
+            <label for="atem-ip-input">ATEM Switcher IP Address</label>
+            <input id="atem-ip-input" type="text" value="{{ atem_config.ip }}" placeholder="Leave blank if there's no ATEM switcher">
             <div class="modal-actions">
                 <button type="button" onclick="closeModal(event, 'settings-modal-overlay')">Cancel</button>
                 <button type="submit">Save</button>
@@ -154,6 +190,7 @@
         params.append('position_speed', document.getElementById('position-speed-input').value);
         params.append('camera_ip', document.getElementById('camera-ip-input').value);
         params.append('camera_port', document.getElementById('camera-port-input').value);
+        params.append('atem_ip', document.getElementById('atem-ip-input').value);
 
         const response = await fetch('/settings', {
             method: 'POST',
@@ -168,6 +205,69 @@
             window.location.reload();
         }
     }
+
+    function openAtemNameModal(num, currentName) {
+        document.getElementById('atem-name-modal-input-num').value = num;
+        document.getElementById('atem-name-modal-input').value = currentName;
+        document.getElementById('atem-name-modal-overlay').classList.add('open');
+    }
+
+    async function submitAtemInputName(event) {
+        event.preventDefault();
+        const num = document.getElementById('atem-name-modal-input-num').value;
+        const input = document.getElementById('atem-name-modal-input');
+        const params = new URLSearchParams();
+        params.append('name', input.value);
+
+        const response = await fetch(`/atem/input/${num}/name`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params,
+        });
+
+        const text = await response.text();
+        setStatus(text);
+
+        if (response.ok) {
+            const label = document.getElementById(`atem-input-btn-${num}`);
+            if (label) label.innerText = input.value.trim() || `Input ${num}`;
+            document.getElementById('atem-name-modal-overlay').classList.remove('open');
+        }
+    }
+
+    async function refreshAtemState() {
+        const statusEl = document.getElementById('atem-status');
+        if (!statusEl) return;
+
+        try {
+            const response = await fetch('/atem/state');
+            const payload = await response.json();
+
+            document.querySelectorAll('.atem-input-btn').forEach((btn) => {
+                btn.classList.remove('live', 'preview');
+            });
+
+            if (!payload.connected) {
+                statusEl.innerText = 'Not connected';
+                return;
+            }
+
+            statusEl.innerText = `Connected${payload.model ? ' - ' + payload.model : ''}`;
+
+            const liveBtn = document.getElementById(`atem-input-btn-${payload.program}`);
+            if (liveBtn) liveBtn.classList.add('live');
+
+            const previewBtn = document.getElementById(`atem-input-btn-${payload.preview}`);
+            if (previewBtn) previewBtn.classList.add('preview');
+        } catch (error) {
+            statusEl.innerText = 'Unable to reach switcher status';
+        }
+    }
+
+    window.addEventListener('load', () => {
+        refreshAtemState();
+        setInterval(refreshAtemState, 1000);
+    });
 </script>
 
 </body>

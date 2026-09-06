@@ -1,8 +1,9 @@
 # Calvary-Smyrna-Camera-Control
 
-A local web app to control the livestream PTZ camera over VISCA (UDP), plus
-an HTTP API so other software (FreeShow, a show-control bridge like
-Bitfocus Companion, scripts) can trigger the same camera moves.
+A local web app to control the livestream PTZ camera over VISCA (UDP) and,
+optionally, an ATEM video switcher on the same network, plus an HTTP API so
+other software (FreeShow, a show-control bridge like Bitfocus Companion,
+scripts) can trigger the same camera moves and switcher cuts.
 
 For how to *use* the app and its API - the web UI, presets vs. local
 positions, the full endpoint reference, and how to wire up external
@@ -43,6 +44,11 @@ Everything is persisted in `config.json` in the project root:
 - `local_positions`: pan/tilt/zoom coordinates for positions beyond the
   camera's own onboard preset memory, captured from the camera's current
   position and replayed via VISCA's absolute-position commands.
+- `atem`: `ip` of an ATEM switcher (optional - leave blank if there isn't
+  one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
+  the Program input directly and read Program/Preview tally state.
+- `atem_input_names`: display names for the switcher's inputs (1-4 by
+  default, matching an ATEM Mini Pro's 4 HDMI inputs).
 
 All of the above is editable from the web UI (main page, Manage Positions,
 and the Settings modal) - `config.json` isn't meant to be hand-edited
@@ -52,11 +58,12 @@ during normal use.
 
 - `app.py`: Flask routes and config load/save.
 - `visca.py`: `ViscaCamera` - the VISCA-over-UDP protocol layer.
-- `camera_worker.py`: serializes all camera I/O through one background
-  thread with per-call timeouts, so a slow or hung camera command can't
-  block the web server or freeze the frontend.
-- `templates/index.html`: main control page (presets, dpad, zoom,
-  position feedback, Settings).
+- `camera_worker.py`: serializes device I/O through a background thread
+  with per-call timeouts, so a slow or hung command can't block the web
+  server or freeze the frontend. Used separately for the camera and the
+  ATEM switcher, so one device stalling can't back up the other's queue.
+- `templates/index.html`: main control page (presets, switcher, dpad,
+  zoom, position feedback, Settings).
 - `templates/positions.html`: "Manage Positions" - the overwrite/create/
   delete actions, deliberately kept off the main page.
 - `templates/help.html`: in-app usage and API documentation (`/help`).

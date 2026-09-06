@@ -99,6 +99,17 @@ button:active { background: #666; }
     letter-spacing: 0.5px;
 }
 
+.atem-input-btn.live {
+    background: #aa2222;
+    box-shadow: 0 0 0 2px #ff4444 inset;
+}
+
+.atem-input-btn.live:hover { background: #cc2c2c; }
+
+.atem-input-btn.preview {
+    box-shadow: 0 0 0 2px #33aa33 inset;
+}
+
 .preset-recall {
     height: 70px;
     font-size: 14px;

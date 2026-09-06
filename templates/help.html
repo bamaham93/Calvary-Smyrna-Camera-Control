@@ -19,10 +19,11 @@
         <h2>What This App Does</h2>
         <p>
             This app controls one PTZ (pan/tilt/zoom) camera over the VISCA protocol,
-            sent as UDP packets to the camera's IP address. It gives you a web page
-            for manual control, and a plain HTTP API so other software &mdash;
-            a show-control program, a script, a physical button box &mdash; can
-            trigger the same camera moves.
+            sent as UDP packets to the camera's IP address, and optionally an ATEM
+            video switcher on the same network. It gives you a web page for manual
+            control, and a plain HTTP API so other software &mdash; a show-control
+            program, a script, a physical button box &mdash; can trigger the same
+            camera moves and switcher cuts.
         </p>
         <div class="callout">
             Nothing here needs a password or login. Anyone who can reach this app's
@@ -37,6 +38,7 @@
         <h3>Main Control Page</h3>
         <ul>
             <li><strong>Presets</strong> &mdash; click a name to recall that shot. "Rename" changes its label.</li>
+            <li><strong>Switcher</strong> &mdash; click an input to put it on air (Program) immediately on the ATEM. A red highlight means that input is currently live (Program); green means it's on Preview. Only shown as connected once an ATEM IP is set in Settings and it's reachable.</li>
             <li><strong>Pan / Tilt</strong> &mdash; press and hold a direction; it stops on release.</li>
             <li><strong>Zoom</strong> &mdash; in / stop / out, at the speed set in Settings.</li>
             <li><strong>Position Feedback</strong> &mdash; the camera's current raw pan/tilt/zoom values (see note on units below).</li>
@@ -60,6 +62,7 @@
             <tr><td>Camera IP / Port</td><td>Where this app sends VISCA commands. Change this if the camera's network address changes &mdash; no code editing needed.</td></tr>
             <tr><td>Default Zoom / Pan / Tilt Speed</td><td>Speed used by manual dpad and zoom buttons.</td></tr>
             <tr><td>Position Recall Speed</td><td>Speed used only when recalling a local position or using "Go To." Lower is slower but lands more precisely &mdash; PTZ gimbals tend to overshoot slightly at higher speeds, which is more visible at high zoom.</td></tr>
+            <tr><td>ATEM Switcher IP Address</td><td>Optional. Leave blank if there's no ATEM switcher &mdash; the Switcher panel just shows "Not connected" and nothing else changes.</td></tr>
         </table>
     </div>
 
@@ -139,8 +142,26 @@
             <tr>
                 <td>Update settings</td>
                 <td>POST <code>/settings</code></td>
-                <td><code>zoom_speed</code>, <code>pan_speed</code>, <code>tilt_speed</code>, <code>position_speed</code>, <code>camera_ip</code>, <code>camera_port</code></td>
-                <td>All fields are required together.</td>
+                <td><code>zoom_speed</code>, <code>pan_speed</code>, <code>tilt_speed</code>, <code>position_speed</code>, <code>camera_ip</code>, <code>camera_port</code>, <code>atem_ip</code></td>
+                <td>All fields except <code>atem_ip</code> are required together. Omitting <code>atem_ip</code> leaves it unchanged.</td>
+            </tr>
+            <tr>
+                <td>Switch the live (Program) source</td>
+                <td>POST <code>/atem/program/&lt;num&gt;</code></td>
+                <td>&mdash;</td>
+                <td>Cuts directly &mdash; no separate preview/take step. Returns 503 if the ATEM isn't connected.</td>
+            </tr>
+            <tr>
+                <td>Read switcher state / tally</td>
+                <td>GET <code>/atem/state</code></td>
+                <td>&mdash;</td>
+                <td>Returns JSON <code>{"connected", "program", "preview", "model"}</code>. <code>program</code>/<code>preview</code> are input numbers, or <code>null</code> if not connected.</td>
+            </tr>
+            <tr>
+                <td>Rename a switcher input</td>
+                <td>POST <code>/atem/input/&lt;num&gt;/name</code></td>
+                <td><code>name=&lt;text&gt;</code> (form or JSON)</td>
+                <td>Display label only &mdash; doesn't touch the ATEM itself.</td>
             </tr>
         </table>
         </div>
@@ -203,6 +224,7 @@
             <li><strong>A local position seems to land in the wrong spot?</strong> Try lowering Position Recall Speed in Settings &mdash; higher speeds can overshoot slightly, especially at high zoom.</li>
             <li><strong>Config lives in <code>config.json</code></strong> next to the app &mdash; presets, local positions, and settings are all there. Back it up before making bulk changes if you want an easy way back.</li>
             <li><strong>This app should keep running</strong> for other software (FreeShow, Companion, etc.) to reach it &mdash; if it's restarted, anything pointed at it will start working again automatically once it's back up, no reconfiguration needed on the other end.</li>
+            <li><strong>Switcher panel stuck on "Not connected"?</strong> Check the ATEM IP in Settings, and that this app and the ATEM are on the same network. It reconnects automatically once reachable &mdash; no need to restart the app.</li>
         </ul>
     </div>
 

@@ -3,17 +3,22 @@ import os
 import sys
 from pathlib import Path
 
+import PyATEMMax
 from flask import Flask, jsonify, render_template, request
 from camera_worker import CameraWorker, TimedOut
 from visca import ViscaCamera
 
 app = Flask(__name__)
 worker = CameraWorker()
+atem_worker = CameraWorker()
 CAMERA_TIMEOUT = 2.0
+ATEM_TIMEOUT = 2.0
 CONFIG_FILE = Path(__file__).with_name("config.json")
 DEFAULT_PRESET_RANGE = range(1, 13)
 DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8, "position_speed": 5}
 DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
+DEFAULT_ATEM = {"ip": ""}
+DEFAULT_ATEM_INPUT_RANGE = range(1, 5)
 
 
 def default_preset_name(preset_num):
@@ -83,23 +88,43 @@ def sanitize_camera_port(port):
     return max(1, min(65535, cleaned_port))
 
 
+def default_atem_input_name(num):
+    return f"Input {num}"
+
+
+def default_atem_input_names():
+    return {num: default_atem_input_name(num) for num in DEFAULT_ATEM_INPUT_RANGE}
+
+
+def sanitize_atem_input_name(name, num):
+    cleaned_name = str(name).strip()[:40]
+    return cleaned_name or default_atem_input_name(num)
+
+
+def sanitize_atem_ip(ip):
+    # Empty string is a valid, meaningful value here: "no ATEM configured".
+    return str(ip).strip()
+
+
 def load_config(file_path=None):
     file_path = file_path or CONFIG_FILE
     names = default_preset_names()
     settings = dict(DEFAULT_SETTINGS)
     camera = dict(DEFAULT_CAMERA)
     local_positions = {}
+    atem_config = dict(DEFAULT_ATEM)
+    atem_input_names = default_atem_input_names()
 
     if not file_path.exists():
-        return names, settings, camera, local_positions
+        return names, settings, camera, local_positions, atem_config, atem_input_names
 
     try:
         persisted = json.loads(file_path.read_text())
     except (json.JSONDecodeError, OSError):
-        return names, settings, camera, local_positions
+        return names, settings, camera, local_positions, atem_config, atem_input_names
 
     if not isinstance(persisted, dict):
-        return names, settings, camera, local_positions
+        return names, settings, camera, local_positions, atem_config, atem_input_names
 
     persisted_local_positions = persisted.get("local_positions", {})
     if isinstance(persisted_local_positions, dict):
@@ -147,10 +172,27 @@ def load_config(file_path=None):
         camera["ip"] = sanitize_camera_ip(persisted_camera.get("ip", camera["ip"]))
         camera["port"] = sanitize_camera_port(persisted_camera.get("port", camera["port"]))
 
-    return names, settings, camera, local_positions
+    persisted_atem = persisted.get("atem", {})
+    if isinstance(persisted_atem, dict):
+        atem_config["ip"] = sanitize_atem_ip(persisted_atem.get("ip", atem_config["ip"]))
+
+    persisted_atem_names = persisted.get("atem_input_names", {})
+    if isinstance(persisted_atem_names, dict):
+        for key, value in persisted_atem_names.items():
+            try:
+                input_num = int(key)
+            except (TypeError, ValueError):
+                continue
+
+            if input_num not in DEFAULT_ATEM_INPUT_RANGE:
+                continue
+
+            atem_input_names[input_num] = sanitize_atem_input_name(value, input_num)
+
+    return names, settings, camera, local_positions, atem_config, atem_input_names
 
 
-def save_config(names, settings, camera, local_positions, file_path=None):
+def save_config(names, settings, camera, local_positions, atem_config, atem_input_names, file_path=None):
     file_path = file_path or CONFIG_FILE
     data = {
         "preset_names": {str(preset): name for preset, name in names.items()},
@@ -168,6 +210,10 @@ def save_config(names, settings, camera, local_positions, file_path=None):
             str(num): {"pan": position["pan"], "tilt": position["tilt"], "zoom": position["zoom"]}
             for num, position in local_positions.items()
         },
+        "atem": {
+            "ip": sanitize_atem_ip(atem_config.get("ip")),
+        },
+        "atem_input_names": {str(num): name for num, name in atem_input_names.items()},
     }
     file_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
@@ -215,7 +261,7 @@ def capture_local_position(num):
         "tilt": feedback["tilt"],
         "zoom": feedback["zoom"],
     }
-    save_config(preset_names, settings, camera, local_positions)
+    save_config(preset_names, settings, camera, local_positions, atem_config, atem_input_names)
 
 
 def create_and_capture_local_position(requested_name):
@@ -225,12 +271,27 @@ def create_and_capture_local_position(requested_name):
     num = next_local_position_number()
     capture_local_position(num)
     preset_names[num] = sanitize_preset_name(requested_name or default_preset_name(num), num)
-    save_config(preset_names, settings, camera, local_positions)
+    save_config(preset_names, settings, camera, local_positions, atem_config, atem_input_names)
     return num
 
 
-preset_names, settings, camera, local_positions = load_config()
+preset_names, settings, camera, local_positions, atem_config, atem_input_names = load_config()
 cam = ViscaCamera(camera["ip"], port=camera["port"])
+
+atem = PyATEMMax.ATEMMax()
+
+
+def connect_atem(ip):
+    """(Re)connect to the ATEM switcher. A blank IP means "not configured" -
+    skip connecting entirely rather than pointing at a meaningless address.
+    connect() itself is non-blocking; PyATEMMax manages its own background
+    threads and automatic reconnection from here on."""
+    atem.disconnect()
+    if ip:
+        atem.connect(ip)
+
+
+connect_atem(atem_config["ip"])
 
 
 @app.route("/preset/<int:num>")
@@ -278,7 +339,7 @@ def preset_name(num):
 
     cleaned_name = sanitize_preset_name(requested_name, num)
     preset_names[num] = cleaned_name
-    save_config(preset_names, settings, camera, local_positions)
+    save_config(preset_names, settings, camera, local_positions, atem_config, atem_input_names)
     return f"Updated preset {num} name to {cleaned_name}"
 
 
@@ -306,7 +367,7 @@ def delete_local_position(num):
 
     del local_positions[num]
     preset_names.pop(num, None)
-    save_config(preset_names, settings, camera, local_positions)
+    save_config(preset_names, settings, camera, local_positions, atem_config, atem_input_names)
     return f"Deleted position {num}"
 
 
@@ -343,6 +404,7 @@ def update_settings():
     requested_position_speed = request.form.get("position_speed")
     requested_camera_ip = request.form.get("camera_ip")
     requested_camera_port = request.form.get("camera_port")
+    requested_atem_ip = request.form.get("atem_ip")
 
     if request.is_json:
         payload = request.get_json(silent=True) or {}
@@ -358,6 +420,8 @@ def update_settings():
             requested_camera_ip = payload.get("camera_ip")
         if requested_camera_port is None:
             requested_camera_port = payload.get("camera_port")
+        if requested_atem_ip is None:
+            requested_atem_ip = payload.get("atem_ip")
 
     if requested_zoom_speed is None:
         return "zoom_speed is required", 400
@@ -379,15 +443,71 @@ def update_settings():
     camera["ip"] = sanitize_camera_ip(requested_camera_ip)
     camera["port"] = sanitize_camera_port(requested_camera_port)
     cam.set_target(camera["ip"], camera["port"])
-    save_config(preset_names, settings, camera, local_positions)
+
+    # atem_ip is optional - a missing field leaves the current value alone,
+    # rather than resetting an already-configured switcher's address.
+    new_atem_ip = sanitize_atem_ip(requested_atem_ip if requested_atem_ip is not None else atem_config["ip"])
+    if new_atem_ip != atem_config["ip"]:
+        atem_config["ip"] = new_atem_ip
+        connect_atem(new_atem_ip)
+
+    save_config(preset_names, settings, camera, local_positions, atem_config, atem_input_names)
     return (
         "Updated settings: "
         f"zoom speed {settings['zoom_speed']}, "
         f"pan speed {settings['pan_speed']}, "
         f"tilt speed {settings['tilt_speed']}, "
         f"position recall speed {settings['position_speed']}, "
-        f"camera {camera['ip']}:{camera['port']}"
+        f"camera {camera['ip']}:{camera['port']}, "
+        f"ATEM {atem_config['ip'] or '(not configured)'}"
     )
+
+
+@app.route("/atem/state")
+def atem_state():
+    if not atem.connected:
+        return jsonify({"connected": False, "program": None, "preview": None, "model": None})
+
+    return jsonify(
+        {
+            "connected": True,
+            "program": atem.programInput[0].videoSource.value,
+            "preview": atem.previewInput[0].videoSource.value,
+            "model": atem.atemModel or None,
+        }
+    )
+
+
+@app.route("/atem/program/<int:source>", methods=["POST"])
+def atem_set_program(source):
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(atem.setProgramInputVideoSource, 0, source, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return f"Program set to {atem_input_names.get(source, default_atem_input_name(source))}"
+
+
+@app.route("/atem/input/<int:num>/name", methods=["POST"])
+def atem_input_name(num):
+    if num not in DEFAULT_ATEM_INPUT_RANGE:
+        return "Invalid input", 400
+
+    requested_name = request.form.get("name")
+    if requested_name is None and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        requested_name = payload.get("name")
+
+    if requested_name is None:
+        return "Name is required", 400
+
+    cleaned_name = sanitize_atem_input_name(requested_name, num)
+    atem_input_names[num] = cleaned_name
+    save_config(preset_names, settings, camera, local_positions, atem_config, atem_input_names)
+    return f"Updated input {num} name to {cleaned_name}"
 
 
 @app.route("/zoom/in/<int:speed>")
@@ -472,8 +592,19 @@ def home():
         {"num": num, "name": preset_names.get(num, default_preset_name(num))}
         for num in all_preset_numbers
     ]
+    atem_inputs = [
+        {"num": num, "name": atem_input_names.get(num, default_atem_input_name(num))}
+        for num in DEFAULT_ATEM_INPUT_RANGE
+    ]
 
-    return render_template("index.html", presets=presets, settings=settings, camera=camera)
+    return render_template(
+        "index.html",
+        presets=presets,
+        settings=settings,
+        camera=camera,
+        atem_config=atem_config,
+        atem_inputs=atem_inputs,
+    )
 
 
 @app.route("/positions")

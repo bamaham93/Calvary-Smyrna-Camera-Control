@@ -37,14 +37,41 @@ class FakeCamera:
         self.calls.append(("set_target", ip, port))
 
 
+class FakeAtemInputSlot:
+    def __init__(self, value=None):
+        self.videoSource = type("FakeVideoSource", (), {"value": value})()
+
+
+class FakeAtem:
+    def __init__(self):
+        self.calls = []
+        self.connected = False
+        self.atemModel = ""
+        self.programInput = {0: FakeAtemInputSlot()}
+        self.previewInput = {0: FakeAtemInputSlot()}
+
+    def connect(self, ip):
+        self.calls.append(("connect", ip))
+
+    def disconnect(self):
+        self.calls.append(("disconnect",))
+
+    def setProgramInputVideoSource(self, mE, source):
+        self.calls.append(("setProgramInputVideoSource", mE, source))
+        self.programInput[mE].videoSource.value = source
+
+
 class CameraAppTests(unittest.TestCase):
     def setUp(self):
         self.original_cam = camera_app.cam
+        self.original_atem = camera_app.atem
         self.original_config_file = camera_app.CONFIG_FILE
         self.original_preset_names = dict(camera_app.preset_names)
         self.original_settings = dict(camera_app.settings)
         self.original_camera = dict(camera_app.camera)
         self.original_local_positions = dict(camera_app.local_positions)
+        self.original_atem_config = dict(camera_app.atem_config)
+        self.original_atem_input_names = dict(camera_app.atem_input_names)
 
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_path = Path(self.temp_dir.name) / "config.json"
@@ -53,20 +80,33 @@ class CameraAppTests(unittest.TestCase):
         camera_app.settings = dict(camera_app.DEFAULT_SETTINGS)
         camera_app.camera = dict(camera_app.DEFAULT_CAMERA)
         camera_app.local_positions = {}
+        camera_app.atem_config = dict(camera_app.DEFAULT_ATEM)
+        camera_app.atem_input_names = camera_app.default_atem_input_names()
         camera_app.cam = FakeCamera()
+        camera_app.atem = FakeAtem()
         self.client = camera_app.app.test_client()
 
     def tearDown(self):
         camera_app.cam = self.original_cam
+        camera_app.atem = self.original_atem
         camera_app.CONFIG_FILE = self.original_config_file
         camera_app.preset_names = self.original_preset_names
         camera_app.settings = self.original_settings
         camera_app.camera = self.original_camera
         camera_app.local_positions = self.original_local_positions
+        camera_app.atem_config = self.original_atem_config
+        camera_app.atem_input_names = self.original_atem_input_names
         self.temp_dir.cleanup()
 
     def test_load_config_returns_defaults_for_missing_file(self):
-        loaded_names, loaded_settings, loaded_camera, loaded_local_positions = camera_app.load_config(self.temp_path)
+        (
+            loaded_names,
+            loaded_settings,
+            loaded_camera,
+            loaded_local_positions,
+            loaded_atem,
+            loaded_atem_names,
+        ) = camera_app.load_config(self.temp_path)
 
         self.assertEqual(loaded_names[1], "Preset 1")
         self.assertEqual(loaded_names[12], "Preset 12")
@@ -76,6 +116,9 @@ class CameraAppTests(unittest.TestCase):
         self.assertEqual(loaded_settings["position_speed"], camera_app.DEFAULT_SETTINGS["position_speed"])
         self.assertEqual(loaded_camera, camera_app.DEFAULT_CAMERA)
         self.assertEqual(loaded_local_positions, {})
+        self.assertEqual(loaded_atem, camera_app.DEFAULT_ATEM)
+        self.assertEqual(loaded_atem_names[1], "Input 1")
+        self.assertEqual(loaded_atem_names[4], "Input 4")
 
     def test_load_config_merges_and_sanitizes_values(self):
         self.temp_path.write_text(
@@ -89,11 +132,20 @@ class CameraAppTests(unittest.TestCase):
                         "1": {"pan": 1, "tilt": 1, "zoom": 1},
                         "14": {"pan": "bad"},
                     },
+                    "atem": {"ip": "10.0.0.99"},
+                    "atem_input_names": {"1": "  Pulpit Wide  ", "9": "Ignored"},
                 }
             )
         )
 
-        loaded_names, loaded_settings, loaded_camera, loaded_local_positions = camera_app.load_config(self.temp_path)
+        (
+            loaded_names,
+            loaded_settings,
+            loaded_camera,
+            loaded_local_positions,
+            loaded_atem,
+            loaded_atem_names,
+        ) = camera_app.load_config(self.temp_path)
 
         self.assertEqual(loaded_names[1], "Stage Left")
         self.assertEqual(loaded_names[12], "Preset 12")
@@ -102,6 +154,10 @@ class CameraAppTests(unittest.TestCase):
         self.assertEqual(loaded_settings["tilt_speed"], 0)
         self.assertEqual(loaded_settings["position_speed"], 20)
         self.assertEqual(loaded_camera, {"ip": "192.168.1.50", "port": 9999})
+        self.assertEqual(loaded_atem, {"ip": "10.0.0.99"})
+        self.assertEqual(loaded_atem_names[1], "Pulpit Wide")
+        self.assertEqual(loaded_atem_names[2], "Input 2")
+        self.assertNotIn(9, loaded_atem_names)
 
         # Local position 13 is valid and merges its name; "1" collides with
         # a camera preset number and is dropped; "14" has malformed fields
@@ -361,6 +417,116 @@ class CameraAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(camera_app.cam.calls, [])
+
+    def test_atem_state_when_not_connected(self):
+        response = self.client.get("/atem/state")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"connected": False, "program": None, "preview": None, "model": None})
+
+    def test_atem_state_when_connected(self):
+        camera_app.atem.connected = True
+        camera_app.atem.atemModel = "ATEM Mini Pro"
+        camera_app.atem.programInput[0].videoSource.value = 2
+        camera_app.atem.previewInput[0].videoSource.value = 3
+
+        response = self.client.get("/atem/state")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json,
+            {"connected": True, "program": 2, "preview": 3, "model": "ATEM Mini Pro"},
+        )
+
+    def test_atem_set_program_requires_connection(self):
+        response = self.client.post("/atem/program/2")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(camera_app.atem.calls, [])
+
+    def test_atem_set_program_calls_switcher(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/program/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Program set to Input 2", response.get_data(as_text=True))
+        self.assertIn(("setProgramInputVideoSource", 0, 2), camera_app.atem.calls)
+
+    def test_atem_input_name_updates_and_persists(self):
+        response = self.client.post("/atem/input/1/name", data={"name": "Pulpit Wide"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(camera_app.atem_input_names[1], "Pulpit Wide")
+
+        stored = json.loads(self.temp_path.read_text())
+        self.assertEqual(stored["atem_input_names"]["1"], "Pulpit Wide")
+
+    def test_atem_input_name_rejects_out_of_range(self):
+        response = self.client.post("/atem/input/99/name", data={"name": "Whatever"})
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_settings_omitting_atem_ip_leaves_it_unchanged(self):
+        camera_app.atem_config["ip"] = "10.0.0.5"
+
+        response = self.client.post(
+            "/settings",
+            data={
+                "zoom_speed": "2",
+                "pan_speed": "8",
+                "tilt_speed": "8",
+                "position_speed": "5",
+                "camera_ip": "10.0.0.1",
+                "camera_port": "1259",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(camera_app.atem_config["ip"], "10.0.0.5")
+        self.assertEqual(camera_app.atem.calls, [])
+
+    def test_update_settings_reconnects_atem_when_ip_changes(self):
+        response = self.client.post(
+            "/settings",
+            data={
+                "zoom_speed": "2",
+                "pan_speed": "8",
+                "tilt_speed": "8",
+                "position_speed": "5",
+                "camera_ip": "10.0.0.1",
+                "camera_port": "1259",
+                "atem_ip": "10.0.0.99",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("ATEM 10.0.0.99", response.get_data(as_text=True))
+        self.assertEqual(camera_app.atem_config["ip"], "10.0.0.99")
+        self.assertEqual(camera_app.atem.calls, [("disconnect",), ("connect", "10.0.0.99")])
+
+        stored = json.loads(self.temp_path.read_text())
+        self.assertEqual(stored["atem"]["ip"], "10.0.0.99")
+
+    def test_update_settings_blank_atem_ip_disconnects_without_reconnecting(self):
+        camera_app.atem_config["ip"] = "10.0.0.5"
+
+        response = self.client.post(
+            "/settings",
+            data={
+                "zoom_speed": "2",
+                "pan_speed": "8",
+                "tilt_speed": "8",
+                "position_speed": "5",
+                "camera_ip": "10.0.0.1",
+                "camera_port": "1259",
+                "atem_ip": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(camera_app.atem_config["ip"], "")
+        self.assertEqual(camera_app.atem.calls, [("disconnect",)])
 
 
 if __name__ == "__main__":
