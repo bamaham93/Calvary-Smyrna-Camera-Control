@@ -20,20 +20,19 @@ DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
 DEFAULT_ATEM = {"ip": ""}
 DEFAULT_ATEM_INPUT_RANGE = range(1, 5)
 ATEM_KEYER_TYPE_DVE = 3  # PyATEMMax's ATEMKeyerTypes.dVE
-# Size (0.0-1.0, documented) and position for each PIP corner. Position
-# magnitude is a best-effort estimate, not something documented anywhere -
-# the ATEM's DVE coordinate space is believed to extend well past +/-1
-# (roughly +/-18 horizontally, +/-10 vertically for 16:9), unlike size
-# which is a simple 0-1 fraction of the frame. Confirmed too small at
-# +/-0.7 (barely off center) - revised upward; still needs confirming
-# against real hardware, and /atem/pip/raw exists specifically to help
-# dial these in without a code change per attempt.
+# Size (0.0-1.0 fraction of frame) and position for each PIP corner,
+# confirmed on real hardware via the "PIP Position Tuning" panel on
+# Manage Positions (position_x=11.5, position_y=6.5 for Top Right - the
+# ATEM's DVE coordinate space isn't a simple -1..1 range like size is, and
+# isn't documented anywhere, so this came from direct observation rather
+# than the library's docs). Mirrored across the other three corners since
+# the frame is symmetric around (0, 0).
 ATEM_PIP_SIZE = 0.25
 ATEM_PIP_CORNERS = {
-    "top-left": (-13.0, 7.0),
-    "top-right": (13.0, 7.0),
-    "bottom-left": (-13.0, -7.0),
-    "bottom-right": (13.0, -7.0),
+    "top-left": (-11.5, 6.5),
+    "top-right": (11.5, 6.5),
+    "bottom-left": (-11.5, -6.5),
+    "bottom-right": (11.5, -6.5),
 }
 
 

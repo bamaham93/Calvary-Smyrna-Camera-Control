@@ -261,7 +261,7 @@
             <li><strong>Config lives in <code>config.json</code></strong> next to the app &mdash; presets, local positions, and settings are all there. Back it up before making bulk changes if you want an easy way back.</li>
             <li><strong>This app should keep running</strong> for other software (FreeShow, Companion, etc.) to reach it &mdash; if it's restarted, anything pointed at it will start working again automatically once it's back up, no reconfiguration needed on the other end.</li>
             <li><strong>Switcher panel stuck on "Not connected"?</strong> Check the ATEM IP in Settings, and that this app and the ATEM are on the same network. It reconnects automatically once reachable &mdash; no need to restart the app.</li>
-            <li><strong>PIP corner buttons put it in the wrong spot?</strong> The exact position/size values aren't documented anywhere and were a best-effort estimate rather than something verified against real hardware &mdash; if a corner looks off, that's a numbers-tuning issue, not a sign the feature is broken.</li>
+            <li><strong>Want a different PIP size or inset?</strong> The corner values in <code>ATEM_PIP_CORNERS</code> (confirmed on real hardware) assume a small inset in each corner &mdash; use "PIP Position Tuning" on Manage Positions to try different numbers, then have them hardcoded in if you want a permanent change.</li>
         </ul>
     </div>
 
