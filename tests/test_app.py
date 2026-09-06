@@ -9,6 +9,7 @@ import app as camera_app
 class FakeCamera:
     def __init__(self):
         self.calls = []
+        self.position_feedback = {"pan": 4660, "tilt": 255, "zoom": 3855}
 
     def stop(self, pan_speed=0, tilt_speed=0):
         self.calls.append(("stop", pan_speed, tilt_speed))
@@ -27,7 +28,13 @@ class FakeCamera:
 
     def get_position_feedback(self):
         self.calls.append(("get_position_feedback",))
-        return {"pan": 4660, "tilt": 255, "zoom": 3855}
+        return dict(self.position_feedback)
+
+    def move_to_position(self, pan, tilt, zoom, pan_speed=8, tilt_speed=8):
+        self.calls.append(("move_to_position", pan, tilt, zoom, pan_speed, tilt_speed))
+
+    def set_target(self, ip, port=None):
+        self.calls.append(("set_target", ip, port))
 
 
 class CameraAppTests(unittest.TestCase):
@@ -36,12 +43,16 @@ class CameraAppTests(unittest.TestCase):
         self.original_config_file = camera_app.CONFIG_FILE
         self.original_preset_names = dict(camera_app.preset_names)
         self.original_settings = dict(camera_app.settings)
+        self.original_camera = dict(camera_app.camera)
+        self.original_local_positions = dict(camera_app.local_positions)
 
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_path = Path(self.temp_dir.name) / "config.json"
         camera_app.CONFIG_FILE = self.temp_path
         camera_app.preset_names = camera_app.default_preset_names()
         camera_app.settings = dict(camera_app.DEFAULT_SETTINGS)
+        camera_app.camera = dict(camera_app.DEFAULT_CAMERA)
+        camera_app.local_positions = {}
         camera_app.cam = FakeCamera()
         self.client = camera_app.app.test_client()
 
@@ -50,34 +61,54 @@ class CameraAppTests(unittest.TestCase):
         camera_app.CONFIG_FILE = self.original_config_file
         camera_app.preset_names = self.original_preset_names
         camera_app.settings = self.original_settings
+        camera_app.camera = self.original_camera
+        camera_app.local_positions = self.original_local_positions
         self.temp_dir.cleanup()
 
     def test_load_config_returns_defaults_for_missing_file(self):
-        loaded_names, loaded_settings = camera_app.load_config(self.temp_path)
+        loaded_names, loaded_settings, loaded_camera, loaded_local_positions = camera_app.load_config(self.temp_path)
 
         self.assertEqual(loaded_names[1], "Preset 1")
         self.assertEqual(loaded_names[12], "Preset 12")
         self.assertEqual(loaded_settings["zoom_speed"], camera_app.DEFAULT_SETTINGS["zoom_speed"])
         self.assertEqual(loaded_settings["pan_speed"], camera_app.DEFAULT_SETTINGS["pan_speed"])
         self.assertEqual(loaded_settings["tilt_speed"], camera_app.DEFAULT_SETTINGS["tilt_speed"])
+        self.assertEqual(loaded_settings["position_speed"], camera_app.DEFAULT_SETTINGS["position_speed"])
+        self.assertEqual(loaded_camera, camera_app.DEFAULT_CAMERA)
+        self.assertEqual(loaded_local_positions, {})
 
     def test_load_config_merges_and_sanitizes_values(self):
         self.temp_path.write_text(
             json.dumps(
                 {
-                    "preset_names": {"1": "  Stage Left  ", "12": "", "19": "Ignored"},
-                    "settings": {"zoom_speed": 10, "pan_speed": 40, "tilt_speed": -2},
+                    "preset_names": {"1": "  Stage Left  ", "12": "", "19": "Ignored", "13": "Choir Wide"},
+                    "settings": {"zoom_speed": 10, "pan_speed": 40, "tilt_speed": -2, "position_speed": 99},
+                    "camera": {"ip": "192.168.1.50", "port": 9999},
+                    "local_positions": {
+                        "13": {"pan": 100, "tilt": -50, "zoom": 400},
+                        "1": {"pan": 1, "tilt": 1, "zoom": 1},
+                        "14": {"pan": "bad"},
+                    },
                 }
             )
         )
 
-        loaded_names, loaded_settings = camera_app.load_config(self.temp_path)
+        loaded_names, loaded_settings, loaded_camera, loaded_local_positions = camera_app.load_config(self.temp_path)
 
         self.assertEqual(loaded_names[1], "Stage Left")
         self.assertEqual(loaded_names[12], "Preset 12")
         self.assertEqual(loaded_settings["zoom_speed"], 7)
         self.assertEqual(loaded_settings["pan_speed"], 24)
         self.assertEqual(loaded_settings["tilt_speed"], 0)
+        self.assertEqual(loaded_settings["position_speed"], 20)
+        self.assertEqual(loaded_camera, {"ip": "192.168.1.50", "port": 9999})
+
+        # Local position 13 is valid and merges its name; "1" collides with
+        # a camera preset number and is dropped; "14" has malformed fields
+        # and is dropped.
+        self.assertEqual(loaded_local_positions, {13: {"pan": 100, "tilt": -50, "zoom": 400}})
+        self.assertEqual(loaded_names[13], "Choir Wide")
+        self.assertNotIn(14, loaded_local_positions)
 
     def test_update_preset_name_saves_to_config_file(self):
         response = self.client.post("/preset/2/name", data={"name": " Choir Wide "})
@@ -98,27 +129,57 @@ class CameraAppTests(unittest.TestCase):
     def test_update_settings_saves_to_config_file(self):
         response = self.client.post(
             "/settings",
-            data={"zoom_speed": "5", "pan_speed": "12", "tilt_speed": "9"},
+            data={
+                "zoom_speed": "5",
+                "pan_speed": "12",
+                "tilt_speed": "9",
+                "position_speed": "3",
+                "camera_ip": "192.168.1.50",
+                "camera_port": "1259",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(
-            "Updated settings: zoom speed 5, pan speed 12, tilt speed 9",
-            response.get_data(as_text=True),
-        )
+        body = response.get_data(as_text=True)
+        self.assertIn("Updated settings: zoom speed 5, pan speed 12, tilt speed 9", body)
+        self.assertIn("position recall speed 3", body)
+        self.assertIn("camera 192.168.1.50:1259", body)
+
         self.assertEqual(camera_app.settings["zoom_speed"], 5)
         self.assertEqual(camera_app.settings["pan_speed"], 12)
         self.assertEqual(camera_app.settings["tilt_speed"], 9)
+        self.assertEqual(camera_app.settings["position_speed"], 3)
+        self.assertEqual(camera_app.camera, {"ip": "192.168.1.50", "port": 1259})
+        self.assertIn(("set_target", "192.168.1.50", 1259), camera_app.cam.calls)
 
         stored = json.loads(self.temp_path.read_text())
         self.assertEqual(stored["settings"]["zoom_speed"], 5)
         self.assertEqual(stored["settings"]["pan_speed"], 12)
         self.assertEqual(stored["settings"]["tilt_speed"], 9)
+        self.assertEqual(stored["settings"]["position_speed"], 3)
+        self.assertEqual(stored["camera"], {"ip": "192.168.1.50", "port": 1259})
 
     def test_update_settings_requires_all_speed_fields(self):
-        response_zoom = self.client.post("/settings", data={"pan_speed": "8", "tilt_speed": "8"})
-        response_pan = self.client.post("/settings", data={"zoom_speed": "2", "tilt_speed": "8"})
-        response_tilt = self.client.post("/settings", data={"zoom_speed": "2", "pan_speed": "8"})
+        base = {
+            "zoom_speed": "2",
+            "pan_speed": "8",
+            "tilt_speed": "8",
+            "position_speed": "5",
+            "camera_ip": "10.0.0.1",
+            "camera_port": "1259",
+        }
+
+        def without(key):
+            data = dict(base)
+            del data[key]
+            return data
+
+        response_zoom = self.client.post("/settings", data=without("zoom_speed"))
+        response_pan = self.client.post("/settings", data=without("pan_speed"))
+        response_tilt = self.client.post("/settings", data=without("tilt_speed"))
+        response_position = self.client.post("/settings", data=without("position_speed"))
+        response_ip = self.client.post("/settings", data=without("camera_ip"))
+        response_port = self.client.post("/settings", data=without("camera_port"))
 
         self.assertEqual(response_zoom.status_code, 400)
         self.assertIn("zoom_speed is required", response_zoom.get_data(as_text=True))
@@ -128,6 +189,15 @@ class CameraAppTests(unittest.TestCase):
 
         self.assertEqual(response_tilt.status_code, 400)
         self.assertIn("tilt_speed is required", response_tilt.get_data(as_text=True))
+
+        self.assertEqual(response_position.status_code, 400)
+        self.assertIn("position_speed is required", response_position.get_data(as_text=True))
+
+        self.assertEqual(response_ip.status_code, 400)
+        self.assertIn("camera_ip is required", response_ip.get_data(as_text=True))
+
+        self.assertEqual(response_port.status_code, 400)
+        self.assertIn("camera_port is required", response_port.get_data(as_text=True))
 
     def test_set_preset_calls_camera(self):
         response = self.client.post("/preset/3/set")
@@ -212,6 +282,85 @@ class CameraAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json, {"error": "Unable to read camera position"})
+
+    def test_create_local_position_captures_current_view_and_assigns_next_number(self):
+        camera_app.cam.position_feedback = {"pan": 65243, "tilt": 65460, "zoom": 15134}
+
+        response = self.client.post("/position/local", data={"name": "Choir Wide"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"num": 13, "name": "Choir Wide"})
+        self.assertEqual(camera_app.local_positions[13], {"pan": 65243, "tilt": 65460, "zoom": 15134})
+        self.assertEqual(camera_app.preset_names[13], "Choir Wide")
+
+        stored = json.loads(self.temp_path.read_text())
+        self.assertEqual(stored["local_positions"]["13"], {"pan": 65243, "tilt": 65460, "zoom": 15134})
+
+        # a second one gets the next number, not a reused one
+        response2 = self.client.post("/position/local", data={"name": "Piano Wide"})
+        self.assertEqual(response2.json["num"], 14)
+
+    def test_recall_local_position_moves_to_stored_coordinates_at_position_speed(self):
+        camera_app.local_positions[13] = {"pan": 100, "tilt": -50, "zoom": 400}
+        camera_app.preset_names[13] = "Choir Wide"
+        camera_app.settings["position_speed"] = 3
+        camera_app.settings["pan_speed"] = 11
+        camera_app.settings["tilt_speed"] = 7
+
+        response = self.client.get("/preset/13")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Recalled Choir Wide", response.get_data(as_text=True))
+        self.assertEqual(
+            camera_app.cam.calls,
+            [("stop", 11, 7), ("zoom_stop",), ("move_to_position", 100, -50, 400, 3, 3)],
+        )
+
+    def test_update_local_position_recaptures_current_view(self):
+        camera_app.local_positions[13] = {"pan": 1, "tilt": 1, "zoom": 1}
+        camera_app.preset_names[13] = "Choir Wide"
+        camera_app.cam.position_feedback = {"pan": 500, "tilt": 600, "zoom": 700}
+
+        response = self.client.post("/preset/13/set")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(camera_app.local_positions[13], {"pan": 500, "tilt": 600, "zoom": 700})
+
+    def test_delete_local_position_removes_it(self):
+        camera_app.local_positions[13] = {"pan": 1, "tilt": 1, "zoom": 1}
+        camera_app.preset_names[13] = "Choir Wide"
+
+        response = self.client.post("/position/local/13/delete")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(13, camera_app.local_positions)
+        self.assertNotIn(13, camera_app.preset_names)
+
+        # it's gone - recalling it now is a 400, not a crash
+        recall_response = self.client.get("/preset/13")
+        self.assertEqual(recall_response.status_code, 400)
+
+    def test_delete_local_position_rejects_camera_preset_numbers(self):
+        response = self.client.post("/position/local/1/delete")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_goto_position_moves_camera_at_position_speed(self):
+        camera_app.settings["position_speed"] = 4
+
+        response = self.client.post(
+            "/position/goto",
+            json={"pan": 100, "tilt": -50, "zoom": 400},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(camera_app.cam.calls, [("move_to_position", 100, -50, 400, 4, 4)])
+
+    def test_goto_position_requires_integer_values(self):
+        response = self.client.post("/position/goto", json={"pan": "abc", "tilt": 1, "zoom": 1})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(camera_app.cam.calls, [])
 
 
 if __name__ == "__main__":
