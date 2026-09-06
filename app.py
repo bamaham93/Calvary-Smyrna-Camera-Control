@@ -495,6 +495,11 @@ def positions_page():
     )
 
 
+@app.route("/help")
+def help_page():
+    return render_template("help.html", base_url=request.host_url.rstrip("/"))
+
+
 def parse_host_port(argv):
     """Accept `app.py [runserver] [HOST:PORT|PORT]`, falling back to the
     HOST/PORT env vars and finally 0.0.0.0:5000."""
