@@ -12,7 +12,7 @@ worker = CameraWorker()
 CAMERA_TIMEOUT = 2.0
 CONFIG_FILE = Path(__file__).with_name("config.json")
 DEFAULT_PRESET_RANGE = range(1, 13)
-DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8}
+DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8, "position_speed": 5}
 DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
 
 
@@ -55,6 +55,17 @@ def sanitize_tilt_speed(speed):
     except (TypeError, ValueError):
         return DEFAULT_SETTINGS["tilt_speed"]
 
+    return max(0, min(20, cleaned_speed))
+
+
+def sanitize_position_speed(speed):
+    try:
+        cleaned_speed = int(speed)
+    except (TypeError, ValueError):
+        return DEFAULT_SETTINGS["position_speed"]
+
+    # Shared between the pan (0-24) and tilt (0-20) speed bytes of the
+    # absolute-position command, so clamp to the tighter of the two.
     return max(0, min(20, cleaned_speed))
 
 
@@ -129,6 +140,7 @@ def load_config(file_path=None):
         settings["zoom_speed"] = sanitize_zoom_speed(persisted_settings.get("zoom_speed"))
         settings["pan_speed"] = sanitize_pan_speed(persisted_settings.get("pan_speed"))
         settings["tilt_speed"] = sanitize_tilt_speed(persisted_settings.get("tilt_speed"))
+        settings["position_speed"] = sanitize_position_speed(persisted_settings.get("position_speed"))
 
     persisted_camera = persisted.get("camera", {})
     if isinstance(persisted_camera, dict):
@@ -146,6 +158,7 @@ def save_config(names, settings, camera, local_positions, file_path=None):
             "zoom_speed": sanitize_zoom_speed(settings.get("zoom_speed")),
             "pan_speed": sanitize_pan_speed(settings.get("pan_speed")),
             "tilt_speed": sanitize_tilt_speed(settings.get("tilt_speed")),
+            "position_speed": sanitize_position_speed(settings.get("position_speed")),
         },
         "camera": {
             "ip": sanitize_camera_ip(camera.get("ip")),
@@ -190,8 +203,8 @@ def recall_local_position(num):
         position["pan"],
         position["tilt"],
         position["zoom"],
-        pan_speed=settings["pan_speed"],
-        tilt_speed=settings["tilt_speed"],
+        pan_speed=settings["position_speed"],
+        tilt_speed=settings["position_speed"],
     )
 
 
@@ -310,7 +323,7 @@ def goto_position():
         return "pan, tilt, and zoom are required integers", 400
 
     def move():
-        cam.move_to_position(pan, tilt, zoom, settings["pan_speed"], settings["tilt_speed"])
+        cam.move_to_position(pan, tilt, zoom, settings["position_speed"], settings["position_speed"])
 
     try:
         worker.submit(move, timeout=CAMERA_TIMEOUT)
@@ -327,6 +340,7 @@ def update_settings():
     requested_zoom_speed = request.form.get("zoom_speed")
     requested_pan_speed = request.form.get("pan_speed")
     requested_tilt_speed = request.form.get("tilt_speed")
+    requested_position_speed = request.form.get("position_speed")
     requested_camera_ip = request.form.get("camera_ip")
     requested_camera_port = request.form.get("camera_port")
 
@@ -338,6 +352,8 @@ def update_settings():
             requested_pan_speed = payload.get("pan_speed")
         if requested_tilt_speed is None:
             requested_tilt_speed = payload.get("tilt_speed")
+        if requested_position_speed is None:
+            requested_position_speed = payload.get("position_speed")
         if requested_camera_ip is None:
             requested_camera_ip = payload.get("camera_ip")
         if requested_camera_port is None:
@@ -349,6 +365,8 @@ def update_settings():
         return "pan_speed is required", 400
     if requested_tilt_speed is None:
         return "tilt_speed is required", 400
+    if requested_position_speed is None:
+        return "position_speed is required", 400
     if requested_camera_ip is None:
         return "camera_ip is required", 400
     if requested_camera_port is None:
@@ -357,6 +375,7 @@ def update_settings():
     settings["zoom_speed"] = sanitize_zoom_speed(requested_zoom_speed)
     settings["pan_speed"] = sanitize_pan_speed(requested_pan_speed)
     settings["tilt_speed"] = sanitize_tilt_speed(requested_tilt_speed)
+    settings["position_speed"] = sanitize_position_speed(requested_position_speed)
     camera["ip"] = sanitize_camera_ip(requested_camera_ip)
     camera["port"] = sanitize_camera_port(requested_camera_port)
     cam.set_target(camera["ip"], camera["port"])
@@ -366,6 +385,7 @@ def update_settings():
         f"zoom speed {settings['zoom_speed']}, "
         f"pan speed {settings['pan_speed']}, "
         f"tilt speed {settings['tilt_speed']}, "
+        f"position recall speed {settings['position_speed']}, "
         f"camera {camera['ip']}:{camera['port']}"
     )
 
