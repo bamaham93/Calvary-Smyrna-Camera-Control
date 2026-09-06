@@ -9,7 +9,10 @@
 
 <div class="header-row">
     <h1>Camera Control</h1>
-    <button type="button" onclick="openSettingsModal()">Settings</button>
+    <div class="header-actions">
+        <a class="button-link" href="/positions">Manage Positions</a>
+        <button type="button" onclick="openSettingsModal()">Settings</button>
+    </div>
 </div>
 
 <div class="container">
@@ -25,7 +28,6 @@
                     type="button"
                     onclick="openNameModal({{ preset.num }}, '{{ preset.name|replace("'", "&#39;") }}')"
                 >Rename</button>
-                <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText">Set Current View</button>
             </div>
             {% endfor %}
         </div>
@@ -117,6 +119,11 @@
             <input id="pan-speed-input" type="number" min="0" max="24" value="{{ settings.pan_speed }}" required>
             <label for="tilt-speed-input">Default Tilt Speed (0-20)</label>
             <input id="tilt-speed-input" type="number" min="0" max="20" value="{{ settings.tilt_speed }}" required>
+            <hr>
+            <label for="camera-ip-input">Camera IP Address</label>
+            <input id="camera-ip-input" type="text" value="{{ camera.ip }}" required>
+            <label for="camera-port-input">Camera Port</label>
+            <input id="camera-port-input" type="number" min="1" max="65535" value="{{ camera.port }}" required>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal(event, 'settings-modal-overlay')">Cancel</button>
                 <button type="submit">Save</button>
@@ -127,55 +134,20 @@
 
 <div id="status">Ready</div>
 
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script>
-    function closeModal(event, modalId) {
-        if (event && event.target.id !== modalId && event.target.tagName !== 'BUTTON') {
-            return;
-        }
-        document.getElementById(modalId).classList.remove('open');
-    }
-
-    function openNameModal(presetNum, currentName) {
-        document.getElementById('name-modal-preset-num').value = presetNum;
-        document.getElementById('name-modal-input').value = currentName;
-        document.getElementById('name-modal-overlay').classList.add('open');
-    }
-
     function openSettingsModal() {
         document.getElementById('settings-modal-overlay').classList.add('open');
     }
 
-    async function submitPresetName(event) {
-        event.preventDefault();
-        const presetNum = document.getElementById('name-modal-preset-num').value;
-        const input = document.getElementById('name-modal-input');
-        const params = new URLSearchParams();
-        params.append('name', input.value);
-
-        const response = await fetch(`/preset/${presetNum}/name`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: params,
-        });
-
-        const text = await response.text();
-        document.getElementById('status').innerText = text;
-
-        if (response.ok) {
-            document.getElementById(`preset-label-${presetNum}`).innerText = input.value.trim() || `Preset ${presetNum}`;
-            document.getElementById('name-modal-overlay').classList.remove('open');
-        }
-    }
-
     async function submitSettings(event) {
         event.preventDefault();
-        const zoomSpeed = document.getElementById('zoom-speed-input').value;
-        const panSpeed = document.getElementById('pan-speed-input').value;
-        const tiltSpeed = document.getElementById('tilt-speed-input').value;
         const params = new URLSearchParams();
-        params.append('zoom_speed', zoomSpeed);
-        params.append('pan_speed', panSpeed);
-        params.append('tilt_speed', tiltSpeed);
+        params.append('zoom_speed', document.getElementById('zoom-speed-input').value);
+        params.append('pan_speed', document.getElementById('pan-speed-input').value);
+        params.append('tilt_speed', document.getElementById('tilt-speed-input').value);
+        params.append('camera_ip', document.getElementById('camera-ip-input').value);
+        params.append('camera_port', document.getElementById('camera-port-input').value);
 
         const response = await fetch('/settings', {
             method: 'POST',
@@ -184,36 +156,12 @@
         });
 
         const text = await response.text();
-        document.getElementById('status').innerText = text;
+        setStatus(text);
 
         if (response.ok) {
             window.location.reload();
         }
     }
-
-    async function refreshPositionFeedback() {
-        try {
-            const response = await fetch('/position');
-            const payload = await response.json();
-
-            if (!response.ok) {
-                document.getElementById('status').innerText = payload.error || 'Unable to read camera position';
-                return;
-            }
-
-            document.getElementById('position-pan').innerText = payload.pan;
-            document.getElementById('position-tilt').innerText = payload.tilt;
-            document.getElementById('position-zoom').innerText = payload.zoom;
-        } catch (error) {
-            document.getElementById('status').innerText = 'Unable to read camera position';
-        }
-    }
-
-    window.addEventListener('load', () => {
-        refreshPositionFeedback();
-        setInterval(refreshPositionFeedback, 1000);
-    });
-
 </script>
 
 </body>

@@ -33,6 +33,18 @@ class ViscaCamera:
             value = (value << 4) | (nibble & 0x0F)
         return value
 
+    @staticmethod
+    def _encode_position_nibbles(value, nibble_count=4):
+        """Inverse of _decode_position_nibbles: split value into
+        nibble_count single-nibble VISCA bytes ("0X"), high nibble first."""
+        value &= (1 << (4 * nibble_count)) - 1
+        return [f"0{(value >> (4 * (nibble_count - 1 - i))) & 0xF:X}" for i in range(nibble_count)]
+
+    def set_target(self, ip, port=None):
+        """Repoint this camera at a new IP (and optionally port) without
+        recreating the UDP socket."""
+        self.addr = (ip, port if port is not None else self.addr[1])
+
     # --- Core VISCA Commands ---
 
     def preset_recall(self, preset):
@@ -88,6 +100,32 @@ class ViscaCamera:
             "tilt": pan_tilt["tilt"],
             "zoom": zoom["zoom"],
         }
+
+    def set_pan_tilt_position(self, pan, tilt, pan_speed=8, tilt_speed=8):
+        """Absolute Position command. `pan`/`tilt` are the same raw VISCA
+        position units reported by get_pan_tilt_position() — capture a value
+        from there and replay it here rather than guessing units."""
+        if not (0 <= pan_speed <= 24):
+            raise ValueError("Pan speed must be between 0 and 24")
+        if not (0 <= tilt_speed <= 20):
+            raise ValueError("Tilt speed must be between 0 and 20")
+
+        pan_nibbles = self._encode_position_nibbles(pan)
+        tilt_nibbles = self._encode_position_nibbles(tilt)
+        self.send(
+            f"81 01 06 02 {pan_speed:02X} {tilt_speed:02X} "
+            f"{' '.join(pan_nibbles)} {' '.join(tilt_nibbles)} FF"
+        )
+
+    def set_zoom_position(self, zoom):
+        """Direct (absolute) zoom, in the same raw units get_zoom_position()
+        reports."""
+        zoom_nibbles = self._encode_position_nibbles(zoom)
+        self.send(f"81 01 04 47 {' '.join(zoom_nibbles)} FF")
+
+    def move_to_position(self, pan, tilt, zoom, pan_speed=8, tilt_speed=8):
+        self.set_pan_tilt_position(pan, tilt, pan_speed=pan_speed, tilt_speed=tilt_speed)
+        self.set_zoom_position(zoom)
 
     # --- Named Shots (your workflow layer) ---
 

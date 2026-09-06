@@ -23,6 +23,25 @@ h2 {
     gap: 8px;
 }
 
+.header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.button-link {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 8px;
+    background: #2a2a2a;
+    color: white;
+    font-size: 16px;
+    padding: 14px;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.button-link:hover { background: #444; }
+
 .container {
     display: flex;
     flex-wrap: wrap;
@@ -185,4 +204,56 @@ button:active { background: #666; }
     border-radius: 8px;
     padding: 10px;
     text-align: center;
+}
+
+.hint {
+    color: #888;
+    font-size: 13px;
+    margin: 0 0 10px;
+}
+
+.danger-panel {
+    border: 1px solid #5a3a3a;
+}
+
+.preset-delete-btn {
+    width: 100%;
+    font-size: 13px;
+    padding: 8px;
+    background: #6a2a2a;
+}
+
+.add-position-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: #305a8a;
+}
+
+.goto-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.goto-form div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.goto-form label {
+    color: #ccc;
+    font-size: 13px;
+}
+
+.goto-form input {
+    background: #222;
+    color: #fff;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 10px;
+    width: 100px;
+    box-sizing: border-box;
+    font-size: 15px;
 }
