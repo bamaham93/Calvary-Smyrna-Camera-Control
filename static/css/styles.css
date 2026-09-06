@@ -56,6 +56,19 @@ h2 {
     min-width: 260px;
 }
 
+.panel-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1 1 280px;
+    min-width: 260px;
+}
+
+.panel-stack .panel {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
 button {
     border: none;
     border-radius: 8px;
