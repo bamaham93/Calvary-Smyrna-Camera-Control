@@ -38,7 +38,7 @@
         <h3>Main Control Page</h3>
         <ul>
             <li><strong>Presets</strong> &mdash; click a name to recall that shot. "Rename" changes its label.</li>
-            <li><strong>Switcher</strong> &mdash; click an input to put it on air (Program) immediately on the ATEM. A red highlight means that input is currently live (Program); green means it's on Preview. Only shown as connected once an ATEM IP is set in Settings and it's reachable.</li>
+            <li><strong>Switcher</strong> &mdash; click an input to put it on air (Program) immediately on the ATEM. A red highlight means that input is currently live (Program); green means it's on Preview. CUT/AUTO transition whatever's on Preview to Program; FTB fades the whole output to black. Only shown as connected once an ATEM IP is set in Settings and it's reachable.</li>
             <li><strong>Pan / Tilt</strong> &mdash; press and hold a direction; it stops on release.</li>
             <li><strong>Zoom</strong> &mdash; in / stop / out, at the speed set in Settings.</li>
             <li><strong>Position Feedback</strong> &mdash; the camera's current raw pan/tilt/zoom values (see note on units below).</li>
@@ -162,6 +162,18 @@
                 <td>POST <code>/atem/input/&lt;num&gt;/name</code></td>
                 <td><code>name=&lt;text&gt;</code> (form or JSON)</td>
                 <td>Display label only &mdash; doesn't touch the ATEM itself.</td>
+            </tr>
+            <tr>
+                <td>Cut / Auto transition</td>
+                <td>POST <code>/atem/cut</code>, POST <code>/atem/auto</code></td>
+                <td>&mdash;</td>
+                <td>Acts on whatever is currently on Preview (set from the physical ATEM panel, other software, or not at all) &mdash; these don't touch a specific input number.</td>
+            </tr>
+            <tr>
+                <td>Fade to black</td>
+                <td>POST <code>/atem/ftb</code></td>
+                <td>&mdash;</td>
+                <td>Toggles the ATEM's Fade-to-Black on the whole output.</td>
             </tr>
         </table>
         </div>

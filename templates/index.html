@@ -37,7 +37,7 @@
 
     <div class="panel">
         <h2>Switcher</h2>
-        <div class="preset-grid" id="atem-inputs-grid">
+        <div class="preset-grid" id="atem-inputs-grid" style="grid-template-columns: repeat({{ atem_inputs|length }}, minmax(0, 1fr));">
             {% for input in atem_inputs %}
             <div class="preset-card">
                 <span class="preset-id">#{{ input.num }}</span>
@@ -49,6 +49,11 @@
                 >Rename</button>
             </div>
             {% endfor %}
+        </div>
+        <div class="atem-transport-controls">
+            <button hx-post="/atem/cut" hx-target="#status" hx-swap="innerText">CUT</button>
+            <button hx-post="/atem/auto" hx-target="#status" hx-swap="innerText">AUTO</button>
+            <button class="ftb-btn" hx-post="/atem/ftb" hx-target="#status" hx-swap="innerText" hx-confirm="Fade the program output to black?">FTB</button>
         </div>
         <p id="atem-status" class="hint">Checking connection...</p>
     </div>

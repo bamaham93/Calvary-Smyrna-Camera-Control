@@ -60,6 +60,15 @@ class FakeAtem:
         self.calls.append(("setProgramInputVideoSource", mE, source))
         self.programInput[mE].videoSource.value = source
 
+    def execCutME(self, mE):
+        self.calls.append(("execCutME", mE))
+
+    def execAutoME(self, mE):
+        self.calls.append(("execAutoME", mE))
+
+    def execFadeToBlackME(self, mE):
+        self.calls.append(("execFadeToBlackME", mE))
+
 
 class CameraAppTests(unittest.TestCase):
     def setUp(self):
@@ -452,6 +461,36 @@ class CameraAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Program set to Input 2", response.get_data(as_text=True))
         self.assertIn(("setProgramInputVideoSource", 0, 2), camera_app.atem.calls)
+
+    def test_atem_cut_calls_switcher(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/cut")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("execCutME", 0), camera_app.atem.calls)
+
+    def test_atem_cut_requires_connection(self):
+        response = self.client.post("/atem/cut")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(camera_app.atem.calls, [])
+
+    def test_atem_auto_calls_switcher(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/auto")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("execAutoME", 0), camera_app.atem.calls)
+
+    def test_atem_ftb_calls_switcher(self):
+        camera_app.atem.connected = True
+
+        response = self.client.post("/atem/ftb")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("execFadeToBlackME", 0), camera_app.atem.calls)
 
     def test_atem_input_name_updates_and_persists(self):
         response = self.client.post("/atem/input/1/name", data={"name": "Pulpit Wide"})
