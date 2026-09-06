@@ -23,6 +23,7 @@
         <div class="preset-grid">
             {% for preset in presets %}
             <div class="preset-card">
+                <span class="preset-id">#{{ preset.num }}</span>
                 <button id="preset-label-{{ preset.num }}" class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
                 <button
                     class="preset-edit-btn"
