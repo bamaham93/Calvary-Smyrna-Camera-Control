@@ -58,6 +58,12 @@ async function refreshPositionFeedback() {
 }
 
 window.addEventListener('load', () => {
+    const pendingMessage = sessionStorage.getItem('pending-status-message');
+    if (pendingMessage) {
+        setStatus(pendingMessage);
+        sessionStorage.removeItem('pending-status-message');
+    }
+
     if (document.getElementById('position-pan')) {
         refreshPositionFeedback();
         setInterval(refreshPositionFeedback, 1000);

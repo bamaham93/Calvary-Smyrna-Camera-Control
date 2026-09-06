@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Help &amp; API Reference</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+<div class="header-row">
+    <h1>Help &amp; API Reference</h1>
+    <div class="header-actions">
+        <a class="button-link" href="/">← Back to Control</a>
+    </div>
+</div>
+
+<div class="container docs-container">
+
+    <div class="panel docs-section">
+        <h2>What This App Does</h2>
+        <p>
+            This app controls one PTZ (pan/tilt/zoom) camera over the VISCA protocol,
+            sent as UDP packets to the camera's IP address. It gives you a web page
+            for manual control, and a plain HTTP API so other software &mdash;
+            a show-control program, a script, a physical button box &mdash; can
+            trigger the same camera moves.
+        </p>
+        <div class="callout">
+            Nothing here needs a password or login. Anyone who can reach this app's
+            address on your network can control the camera. Keep it on a trusted
+            network, same as you would the camera itself.
+        </div>
+    </div>
+
+    <div class="panel docs-section">
+        <h2>Using the Web App</h2>
+
+        <h3>Main Control Page</h3>
+        <ul>
+            <li><strong>Presets</strong> &mdash; click a name to recall that shot. "Rename" changes its label.</li>
+            <li><strong>Pan / Tilt</strong> &mdash; press and hold a direction; it stops on release.</li>
+            <li><strong>Zoom</strong> &mdash; in / stop / out, at the speed set in Settings.</li>
+            <li><strong>Position Feedback</strong> &mdash; the camera's current raw pan/tilt/zoom values (see note on units below).</li>
+        </ul>
+
+        <h3>Manage Positions Page</h3>
+        <p>
+            Everything that <em>overwrites</em> a saved shot lives here instead of the
+            main page, deliberately a click away from the buttons used constantly
+            during a service.
+        </p>
+        <ul>
+            <li><strong>Camera Presets (1&ndash;12)</strong> &mdash; stored on the camera itself. "Set Current View" tells the camera to overwrite that preset with wherever it's pointed right now.</li>
+            <li><strong>Local Positions (13+)</strong> &mdash; stored in this app, not the camera, so there's no fixed limit on how many you can have. "Add New Position" captures the camera's current pan/tilt/zoom as a new entry; "Update to Current View" re-captures an existing one; "Delete" removes it.</li>
+            <li><strong>Go To Specific PTZ Values</strong> &mdash; jump straight to raw pan/tilt/zoom numbers, e.g. to fine-tune a position you're about to save.</li>
+        </ul>
+
+        <h3>Settings</h3>
+        <table class="doc-table">
+            <tr><th>Field</th><th>What it controls</th></tr>
+            <tr><td>Camera IP / Port</td><td>Where this app sends VISCA commands. Change this if the camera's network address changes &mdash; no code editing needed.</td></tr>
+            <tr><td>Default Zoom / Pan / Tilt Speed</td><td>Speed used by manual dpad and zoom buttons.</td></tr>
+            <tr><td>Position Recall Speed</td><td>Speed used only when recalling a local position or using "Go To." Lower is slower but lands more precisely &mdash; PTZ gimbals tend to overshoot slightly at higher speeds, which is more visible at high zoom.</td></tr>
+        </table>
+    </div>
+
+    <div class="panel docs-section">
+        <h2>HTTP API Reference</h2>
+        <p>
+            Every control in the web app is backed by a plain HTTP endpoint &mdash;
+            the buttons just call these. Any tool that can fire an HTTP request on
+            a trigger (a button, a slide change, a schedule) can drive this camera
+            the same way. All examples below use this app's current address:
+        </p>
+        <p><code>{{ base_url }}</code></p>
+
+        <div class="doc-table-wrap">
+        <table class="doc-table">
+            <tr><th>Action</th><th>Method &amp; Path</th><th>Body</th><th>Notes</th></tr>
+            <tr>
+                <td>Recall a preset or position</td>
+                <td>GET <code>/preset/&lt;num&gt;</code></td>
+                <td>&mdash;</td>
+                <td>1&ndash;12 = camera presets, 13+ = local positions. Same call either way.</td>
+            </tr>
+            <tr>
+                <td>Overwrite with current view</td>
+                <td>POST <code>/preset/&lt;num&gt;/set</code></td>
+                <td>&mdash;</td>
+                <td>Camera preset: saved on the camera. Local position: saved in this app's config.</td>
+            </tr>
+            <tr>
+                <td>Rename a preset/position</td>
+                <td>POST <code>/preset/&lt;num&gt;/name</code></td>
+                <td><code>name=&lt;text&gt;</code> (form or JSON)</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>Add a new local position</td>
+                <td>POST <code>/position/local</code></td>
+                <td><code>name=&lt;text&gt;</code> (form or JSON)</td>
+                <td>Captures the camera's current position; assigns the next free number.</td>
+            </tr>
+            <tr>
+                <td>Delete a local position</td>
+                <td>POST <code>/position/local/&lt;num&gt;/delete</code></td>
+                <td>&mdash;</td>
+                <td>Camera presets (1&ndash;12) can't be deleted, only overwritten.</td>
+            </tr>
+            <tr>
+                <td>Go to raw PTZ values</td>
+                <td>POST <code>/position/goto</code></td>
+                <td><code>{"pan": ..., "tilt": ..., "zoom": ...}</code> (JSON or form)</td>
+                <td>Doesn't save anything &mdash; just moves.</td>
+            </tr>
+            <tr>
+                <td>Pan/tilt in a direction</td>
+                <td>GET <code>/move/&lt;direction&gt;</code></td>
+                <td>&mdash;</td>
+                <td><code>direction</code>: up, down, left, right, up-left, up-right, down-left, down-right, stop</td>
+            </tr>
+            <tr>
+                <td>Stop all movement</td>
+                <td>GET <code>/stop</code></td>
+                <td>&mdash;</td>
+                <td>Stops pan/tilt and zoom together.</td>
+            </tr>
+            <tr>
+                <td>Zoom</td>
+                <td>GET <code>/zoom/in/&lt;speed&gt;</code>, <code>/zoom/out/&lt;speed&gt;</code>, <code>/zoom/stop</code></td>
+                <td>&mdash;</td>
+                <td><code>speed</code> is 0&ndash;7.</td>
+            </tr>
+            <tr>
+                <td>Read current position</td>
+                <td>GET <code>/position</code></td>
+                <td>&mdash;</td>
+                <td>Returns JSON <code>{"pan": ..., "tilt": ..., "zoom": ...}</code>.</td>
+            </tr>
+            <tr>
+                <td>Update settings</td>
+                <td>POST <code>/settings</code></td>
+                <td><code>zoom_speed</code>, <code>pan_speed</code>, <code>tilt_speed</code>, <code>position_speed</code>, <code>camera_ip</code>, <code>camera_port</code></td>
+                <td>All fields are required together.</td>
+            </tr>
+        </table>
+        </div>
+
+        <div class="callout warn">
+            <strong>Pan/tilt/zoom values are raw VISCA units, not degrees or a
+            human scale.</strong> They only mean something relative to each
+            other &mdash; read them from <code>/position</code>, don't guess them.
+        </div>
+
+        <p>
+            A recall/move request can occasionally return <code>503</code> with a
+            JSON <code>error</code> field if the camera didn't answer in time
+            (e.g. it's powered off or unreachable). All camera commands are
+            queued and run one at a time in the order they arrive, even if
+            several requests come in at once &mdash; there's no risk of two
+            commands colliding on the camera.
+        </p>
+    </div>
+
+    <div class="panel docs-section">
+        <h2>Triggering It From Other Software</h2>
+        <p>
+            You don't need anything specific to this app on the other end &mdash;
+            just something that can fire an HTTP GET or POST request when a
+            button is pressed, a slide changes, or on a schedule. Look for a
+            feature along the lines of <strong>"Actions," "Triggers," "Webhooks,"
+            "HTTP Request," or "Emit Data"</strong> in whatever you're using.
+            Broadly, two situations come up:
+        </p>
+        <ul>
+            <li>
+                <strong>The software can fire its own outbound HTTP requests</strong>
+                &mdash; point that feature straight at one of the URLs above (a plain
+                GET, no body, is enough for recalling a preset). FreeShow's Actions
+                drawer works this way: an "Emit Data" action pointed at an HTTP
+                emitter with a fixed URL.
+            </li>
+            <li>
+                <strong>The software's own API is built to be controlled, not to
+                control other things</strong> &mdash; ProPresenter's API is mainly
+                this shape. In that case the usual bridge is a tool built for
+                exactly this job, such as <a href="https://bitfocus.io/companion" target="_blank" rel="noopener">Bitfocus Companion</a>:
+                it can watch the show-control software's state and independently
+                fire a plain HTTP request to this app's endpoints as a labeled
+                button, without either side needing to know about the other
+                directly.
+            </li>
+        </ul>
+        <p>
+            Either way, the target is the same: one of the URLs in the table
+            above, using this app's current address, <code>{{ base_url }}</code>.
+        </p>
+    </div>
+
+    <div class="panel docs-section">
+        <h2>Tips &amp; Troubleshooting</h2>
+        <ul>
+            <li><strong>Camera unreachable?</strong> Check Settings &rarr; Camera IP/Port matches the camera's actual network address.</li>
+            <li><strong>A local position seems to land in the wrong spot?</strong> Try lowering Position Recall Speed in Settings &mdash; higher speeds can overshoot slightly, especially at high zoom.</li>
+            <li><strong>Config lives in <code>config.json</code></strong> next to the app &mdash; presets, local positions, and settings are all there. Back it up before making bulk changes if you want an easy way back.</li>
+            <li><strong>This app should keep running</strong> for other software (FreeShow, Companion, etc.) to reach it &mdash; if it's restarted, anything pointed at it will start working again automatically once it's back up, no reconfiguration needed on the other end.</li>
+        </ul>
+    </div>
+
+</div>
+
+</body>
+</html>

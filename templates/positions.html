@@ -10,6 +10,7 @@
 <div class="header-row">
     <h1>Manage Positions</h1>
     <div class="header-actions">
+        <a class="button-link" href="/help">Help</a>
         <a class="button-link" href="/">← Back to Control</a>
     </div>
 </div>
@@ -100,6 +101,7 @@
         <div class="preset-grid">
             {% for preset in camera_presets %}
             <div class="preset-card">
+                <span class="preset-id">#{{ preset.num }}</span>
                 <button id="preset-label-{{ preset.num }}" class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
                 <button class="preset-edit-btn" type="button" onclick="openNameModal({{ preset.num }}, '{{ preset.name|replace("'", "&#39;") }}')">Rename</button>
                 <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText"
@@ -115,6 +117,7 @@
         <div class="preset-grid" id="local-positions-grid">
             {% for position in local_positions %}
             <div class="preset-card" id="local-position-card-{{ position.num }}">
+                <span class="preset-id">#{{ position.num }}</span>
                 <button id="preset-label-{{ position.num }}" class="preset-recall" hx-get="/preset/{{ position.num }}" hx-target="#status" hx-swap="innerText">{{ position.name }}</button>
                 <button class="preset-edit-btn" type="button" onclick="openNameModal({{ position.num }}, '{{ position.name|replace("'", "&#39;") }}')">Rename</button>
                 <button class="preset-set-btn" hx-post="/preset/{{ position.num }}/set" hx-target="#status" hx-swap="innerText"
@@ -179,13 +182,14 @@
             body: params,
         });
 
+        const payload = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
             setStatus(payload.error || 'Unable to add position');
             return;
         }
 
-        setStatus('Position added');
+        sessionStorage.setItem('pending-status-message', `Added position #${payload.num}: ${payload.name}`);
         document.getElementById('add-position-modal-overlay').classList.remove('open');
         window.location.reload();
     }
