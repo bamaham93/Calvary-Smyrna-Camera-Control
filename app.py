@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -253,5 +255,29 @@ def home():
     return render_template("index.html", presets=presets, settings=settings)
 
 
+def parse_host_port(argv):
+    """Accept `app.py [runserver] [HOST:PORT|PORT]`, falling back to the
+    HOST/PORT env vars and finally 0.0.0.0:5000."""
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", 5000))
+
+    args = argv[1:]
+    if args and args[0] == "runserver":
+        args = args[1:]
+
+    if args:
+        addr = args[0]
+        if ":" in addr:
+            host, port_str = addr.rsplit(":", 1)
+            port = int(port_str)
+        else:
+            port = int(addr)
+
+    return host, port
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    host, port = parse_host_port(sys.argv)
+    # use_reloader=False avoids Werkzeug's debug-mode child process, which
+    # can outlive a killed/closed terminal and keep the port bound.
+    app.run(host=host, port=port, debug=True, use_reloader=False)
