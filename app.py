@@ -4,10 +4,13 @@ import sys
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
+from camera_worker import CameraWorker, TimedOut
 from visca import ViscaCamera
 
 app = Flask(__name__)
 cam = ViscaCamera("10.238.171.114")
+worker = CameraWorker()
+CAMERA_TIMEOUT = 2.0
 CONFIG_FILE = Path(__file__).with_name("config.json")
 DEFAULT_PRESET_RANGE = range(1, 13)
 DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8}
@@ -125,7 +128,11 @@ def preset(num):
     if not preset_in_range(num):
         return "Invalid preset", 400
 
-    safe_recall(num)
+    try:
+        worker.submit(safe_recall, num, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
+
     return f"Recalled {preset_names.get(num, default_preset_name(num))}"
 
 
@@ -134,7 +141,11 @@ def preset_set(num):
     if not preset_in_range(num):
         return "Invalid preset", 400
 
-    cam.preset_set(num)
+    try:
+        worker.submit(cam.preset_set, num, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
+
     return f"Saved camera position to {preset_names.get(num, default_preset_name(num))}"
 
 
@@ -193,26 +204,41 @@ def update_settings():
 
 @app.route("/zoom/in/<int:speed>")
 def zoom_in(speed):
-    cam.zoom_in(speed)
+    try:
+        worker.submit(cam.zoom_in, speed, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
     return f"Zoom in {speed}"
 
 
 @app.route("/zoom/out/<int:speed>")
 def zoom_out(speed):
-    cam.zoom_out(speed)
+    try:
+        worker.submit(cam.zoom_out, speed, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
     return f"Zoom out {speed}"
 
 
 @app.route("/zoom/stop")
 def zoom_stop():
-    cam.zoom_stop()
+    try:
+        worker.submit(cam.zoom_stop, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
     return "Zoom stopped"
 
 
 @app.route("/stop")
 def stop():
-    cam.stop()
-    cam.zoom_stop()
+    def stop_all():
+        cam.stop()
+        cam.zoom_stop()
+
+    try:
+        worker.submit(stop_all, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
     return "Stopped all"
 
 
@@ -233,16 +259,22 @@ def move(direction):
     if direction not in moves:
         return "Invalid direction", 400
 
-    moves[direction]()
+    try:
+        worker.submit(moves[direction], timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
     return f"Move {direction}"
 
 
 @app.route("/position")
 def position():
     try:
-        return jsonify(cam.get_position_feedback())
+        result = worker.submit(cam.get_position_feedback, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Unable to read camera position"}), 503
     except (OSError, ValueError, TimeoutError):
         return jsonify({"error": "Unable to read camera position"}), 503
+    return jsonify(result)
 
 
 @app.route("/")
@@ -280,4 +312,6 @@ if __name__ == "__main__":
     host, port = parse_host_port(sys.argv)
     # use_reloader=False avoids Werkzeug's debug-mode child process, which
     # can outlive a killed/closed terminal and keep the port bound.
-    app.run(host=host, port=port, debug=True, use_reloader=False)
+    # threaded=True lets Flask accept requests concurrently; actual camera
+    # I/O is still serialized through CameraWorker's single queue.
+    app.run(host=host, port=port, debug=True, use_reloader=False, threaded=True)
