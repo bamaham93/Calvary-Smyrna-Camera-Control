@@ -1,27 +1,87 @@
 # Calvary-Smyrna-Camera-Control
 
-A local web app to control the livestream camera.
+A local web app to control the livestream PTZ camera over VISCA (UDP) and,
+optionally, an ATEM video switcher on the same network, plus an HTTP API so
+other software (FreeShow, a show-control bridge like Bitfocus Companion,
+scripts) can trigger the same camera moves and switcher cuts.
+
+For how to *use* the app and its API - the web UI, presets vs. local
+positions, the full endpoint reference, and how to wire up external
+software - see the **Help** page in the running app (`/help`). This file
+covers setup and development instead, to avoid the two drifting apart.
+
+## Setup
+
+```bash
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/python app.py runserver 0.0.0.0:3100
+```
+
+`app.py` accepts `[runserver] [HOST:PORT|PORT]`, or the `HOST`/`PORT` env
+vars, defaulting to `0.0.0.0:5000` if nothing is given.
+
+### Running on boot (macOS)
+
+`run.sh` and `com.calvarybaptistchurch.cameracontrol.plist` set this up as
+a `launchd` LaunchAgent that starts at login and restarts itself if it ever
+crashes. See the comments in each file - the plist's paths need to match
+wherever this repo is actually cloned.
 
 ## Configuration
 
-The app persists preset names and app settings in `config.json` in the project root.
+Everything is persisted in `config.json` in the project root:
 
-- `preset_names`: persisted labels for presets 1-12.
-- `settings.zoom_speed`: default speed used by the zoom in/out buttons.
-- `settings.pan_speed`: default pan speed used by directional movement and preset recalls.
-- `settings.tilt_speed`: default tilt speed used by directional movement and preset recalls.
+- `preset_names`: display names for both camera presets (1-12) and local
+  positions (13+).
+- `settings`: `zoom_speed` / `pan_speed` / `tilt_speed` (manual dpad and
+  zoom controls), `position_speed` (used only for local-position recall
+  and "Go To", since absolute-position moves are more precise at lower
+  speeds than manual panning wants to be).
+- `camera`: `ip` / `port` the app sends VISCA commands to. Editable from
+  Settings in the UI - no code changes needed when the camera's address
+  changes.
+- `local_positions`: pan/tilt/zoom coordinates for positions beyond the
+  camera's own onboard preset memory, captured from the camera's current
+  position and replayed via VISCA's absolute-position commands.
+- `atem`: `ip` of an ATEM switcher (optional - leave blank if there isn't
+  one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
+  the Program input directly and read Program/Preview tally state.
+- `atem_input_names`: display names for the switcher's inputs (1-4 by
+  default, matching an ATEM Mini Pro's 4 HDMI inputs).
 
-You can update both through the web UI:
-
-- **Rename** opens a preset-name modal.
-- **Settings** opens a settings modal to update zoom, pan, and tilt speeds.
+All of the above is editable from the web UI (main page, Manage Positions,
+and the Settings modal) - `config.json` isn't meant to be hand-edited
+during normal use.
 
 ## Project structure
 
-- `templates/index.html`: Flask template for the control UI.
-- `static/css/styles.css`: stylesheet for the UI.
+- `app.py`: Flask routes and config load/save.
+- `visca.py`: `ViscaCamera` - the VISCA-over-UDP protocol layer.
+- `camera_worker.py`: serializes device I/O through a background thread
+  with per-call timeouts, so a slow or hung command can't block the web
+  server or freeze the frontend. Used separately for the camera and the
+  ATEM switcher, so one device stalling can't back up the other's queue.
+- `templates/index.html`: main control page (presets, switcher, dpad,
+  zoom, position feedback, Settings).
+- `templates/positions.html`: "Manage Positions" - the overwrite/create/
+  delete actions, deliberately kept off the main page.
+- `templates/help.html`: in-app usage and API documentation (`/help`).
+- `static/`: shared CSS and JS for the above.
+- `run.sh` / `com.calvarybaptistchurch.cameracontrol.plist`: boot-time
+  launch on macOS via `launchd`.
 
+## Testing
 
-## Position Feedback
+```bash
+venv/bin/pip install -r requirements-dev.txt
+venv/bin/pytest tests/ -v
+```
 
-The UI includes a **Position Feedback** panel that polls the camera for raw VISCA pan, tilt, and zoom position values once per second and allows manual refresh.
+`tests/test_visca.py` covers the VISCA command encoding (including the
+absolute-position commands and the stale-ACK-skipping in
+`send_with_response`); `tests/test_app.py` covers the Flask routes,
+config load/save, and the local-positions flow (create/recall/update/
+delete), all against a fake camera so nothing here needs real hardware.
+Run this after touching `app.py` or `visca.py` - both have had real
+regressions slip through before that this suite now catches.
