@@ -193,6 +193,12 @@
                 <td>&mdash;</td>
                 <td>Reflected in <code>/atem/state</code> as <code>pip_on</code> / <code>pip_source</code>.</td>
             </tr>
+            <tr>
+                <td>Set exact PIP position/size</td>
+                <td>POST <code>/atem/pip/raw</code></td>
+                <td><code>{"position_x": ..., "position_y": ..., "size_x": ..., "size_y": ...}</code> (JSON or form; size defaults to the corner presets' size if omitted)</td>
+                <td>Only for finding the right numbers to hardcode into the corner presets &mdash; see "PIP Position Tuning" on Manage Positions.</td>
+            </tr>
         </table>
         </div>
 

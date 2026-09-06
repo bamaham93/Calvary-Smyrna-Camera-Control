@@ -22,13 +22,18 @@ DEFAULT_ATEM_INPUT_RANGE = range(1, 5)
 ATEM_KEYER_TYPE_DVE = 3  # PyATEMMax's ATEMKeyerTypes.dVE
 # Size (0.0-1.0, documented) and position for each PIP corner. Position
 # magnitude is a best-effort estimate, not something documented anywhere -
-# expect to tune these once they're visible on real hardware.
+# the ATEM's DVE coordinate space is believed to extend well past +/-1
+# (roughly +/-18 horizontally, +/-10 vertically for 16:9), unlike size
+# which is a simple 0-1 fraction of the frame. Confirmed too small at
+# +/-0.7 (barely off center) - revised upward; still needs confirming
+# against real hardware, and /atem/pip/raw exists specifically to help
+# dial these in without a code change per attempt.
 ATEM_PIP_SIZE = 0.25
 ATEM_PIP_CORNERS = {
-    "top-left": (-0.7, 0.7),
-    "top-right": (0.7, 0.7),
-    "bottom-left": (-0.7, -0.7),
-    "bottom-right": (0.7, -0.7),
+    "top-left": (-13.0, 7.0),
+    "top-right": (13.0, 7.0),
+    "bottom-left": (-13.0, -7.0),
+    "bottom-right": (13.0, -7.0),
 }
 
 
@@ -553,13 +558,43 @@ def atem_ftb():
     return "Fade to black"
 
 
-def move_pip_to_corner(position_x, position_y):
+def set_pip_dve(position_x, position_y, size_x, size_y):
     atem.setKeyerType(0, 0, ATEM_KEYER_TYPE_DVE)
     atem.setKeyerMasked(0, 0, False)
-    atem.setKeyDVESizeX(0, 0, ATEM_PIP_SIZE)
-    atem.setKeyDVESizeY(0, 0, ATEM_PIP_SIZE)
+    atem.setKeyDVESizeX(0, 0, size_x)
+    atem.setKeyDVESizeY(0, 0, size_y)
     atem.setKeyDVEPositionX(0, 0, position_x)
     atem.setKeyDVEPositionY(0, 0, position_y)
+
+
+def move_pip_to_corner(position_x, position_y):
+    set_pip_dve(position_x, position_y, ATEM_PIP_SIZE, ATEM_PIP_SIZE)
+
+
+@app.route("/atem/pip/raw", methods=["POST"])
+def atem_pip_raw():
+    """Set arbitrary PIP position/size directly - a tuning tool for finding
+    the right numbers for ATEM_PIP_CORNERS, not needed for normal use."""
+    payload = request.get_json(silent=True) if request.is_json else None
+    payload = payload or request.form
+
+    try:
+        position_x = float(payload.get("position_x"))
+        position_y = float(payload.get("position_y"))
+        size_x = float(payload.get("size_x", ATEM_PIP_SIZE))
+        size_y = float(payload.get("size_y", ATEM_PIP_SIZE))
+    except (TypeError, ValueError):
+        return "position_x and position_y are required numbers (size_x/size_y optional)", 400
+
+    if not atem.connected:
+        return jsonify({"error": "ATEM switcher is not connected"}), 503
+
+    try:
+        atem_worker.submit(set_pip_dve, position_x, position_y, size_x, size_y, timeout=ATEM_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "ATEM did not respond in time"}), 503
+
+    return f"PIP set to position=({position_x}, {position_y}) size=({size_x}, {size_y})"
 
 
 @app.route("/atem/pip/corner/<corner>", methods=["POST"])
