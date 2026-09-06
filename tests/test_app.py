@@ -58,6 +58,23 @@ class FakeAtemKeyer:
         self.fillSource = FakeAtemFillSource()
 
 
+class FakeAtemDVEValue:
+    def __init__(self, x=0.0, y=0.0):
+        self.x = x
+        self.y = y
+
+
+class FakeAtemDVE:
+    def __init__(self):
+        self.position = FakeAtemDVEValue()
+        self.size = FakeAtemDVEValue()
+
+
+class FakeAtemKey:
+    def __init__(self):
+        self.dVE = FakeAtemDVE()
+
+
 class FakeAtem:
     def __init__(self):
         self.calls = []
@@ -66,6 +83,7 @@ class FakeAtem:
         self.programInput = {0: FakeAtemInputSlot()}
         self.previewInput = {0: FakeAtemInputSlot()}
         self.keyer = {0: {0: FakeAtemKeyer()}}
+        self.key = {0: {0: FakeAtemKey()}}
 
     def connect(self, ip):
         self.calls.append(("connect", ip))
@@ -94,15 +112,19 @@ class FakeAtem:
 
     def setKeyDVESizeX(self, mE, keyer, sizeX):
         self.calls.append(("setKeyDVESizeX", mE, keyer, sizeX))
+        self.key[mE][keyer].dVE.size.x = sizeX
 
     def setKeyDVESizeY(self, mE, keyer, sizeY):
         self.calls.append(("setKeyDVESizeY", mE, keyer, sizeY))
+        self.key[mE][keyer].dVE.size.y = sizeY
 
     def setKeyDVEPositionX(self, mE, keyer, positionX):
         self.calls.append(("setKeyDVEPositionX", mE, keyer, positionX))
+        self.key[mE][keyer].dVE.position.x = positionX
 
     def setKeyDVEPositionY(self, mE, keyer, positionY):
         self.calls.append(("setKeyDVEPositionY", mE, keyer, positionY))
+        self.key[mE][keyer].dVE.position.y = positionY
 
     def setKeyerFillSource(self, mE, keyer, fillSource):
         self.calls.append(("setKeyerFillSource", mE, keyer, fillSource))
@@ -483,6 +505,7 @@ class CameraAppTests(unittest.TestCase):
                 "model": None,
                 "pip_on": False,
                 "pip_source": None,
+                "pip_corner": None,
             },
         )
 
@@ -494,6 +517,9 @@ class CameraAppTests(unittest.TestCase):
 
         camera_app.atem.keyer[0][0].onAir.enabled = True
         camera_app.atem.keyer[0][0].fillSource.value = 4
+        camera_app.atem.key[0][0].dVE.position.x, camera_app.atem.key[0][0].dVE.position.y = (
+            camera_app.ATEM_PIP_CORNERS["top-right"]
+        )
 
         response = self.client.get("/atem/state")
 
@@ -507,8 +533,26 @@ class CameraAppTests(unittest.TestCase):
                 "model": "ATEM Mini Pro",
                 "pip_on": True,
                 "pip_source": 4,
+                "pip_corner": "top-right",
             },
         )
+
+    def test_atem_state_pip_corner_is_none_off_preset(self):
+        camera_app.atem.connected = True
+        camera_app.atem.key[0][0].dVE.position.x = 0.0
+        camera_app.atem.key[0][0].dVE.position.y = 0.0
+
+        response = self.client.get("/atem/state")
+
+        self.assertIsNone(response.json["pip_corner"])
+
+    def test_atem_pip_corner_button_is_reflected_in_state(self):
+        camera_app.atem.connected = True
+
+        self.client.post("/atem/pip/corner/bottom-left")
+        response = self.client.get("/atem/state")
+
+        self.assertEqual(response.json["pip_corner"], "bottom-left")
 
     def test_atem_set_program_requires_connection(self):
         response = self.client.post("/atem/program/2")

@@ -58,10 +58,10 @@
 
         <div class="atem-pip-controls">
             <div class="atem-pip-corners">
-                <button hx-post="/atem/pip/corner/top-left" hx-target="#status" hx-swap="innerText">↖ Top Left</button>
-                <button hx-post="/atem/pip/corner/top-right" hx-target="#status" hx-swap="innerText">↗ Top Right</button>
-                <button hx-post="/atem/pip/corner/bottom-left" hx-target="#status" hx-swap="innerText">↙ Bottom Left</button>
-                <button hx-post="/atem/pip/corner/bottom-right" hx-target="#status" hx-swap="innerText">↘ Bottom Right</button>
+                <button id="atem-pip-corner-btn-top-left" class="atem-pip-corner-btn" hx-post="/atem/pip/corner/top-left" hx-target="#status" hx-swap="innerText">↖ Top Left</button>
+                <button id="atem-pip-corner-btn-top-right" class="atem-pip-corner-btn" hx-post="/atem/pip/corner/top-right" hx-target="#status" hx-swap="innerText">↗ Top Right</button>
+                <button id="atem-pip-corner-btn-bottom-left" class="atem-pip-corner-btn" hx-post="/atem/pip/corner/bottom-left" hx-target="#status" hx-swap="innerText">↙ Bottom Left</button>
+                <button id="atem-pip-corner-btn-bottom-right" class="atem-pip-corner-btn" hx-post="/atem/pip/corner/bottom-right" hx-target="#status" hx-swap="innerText">↘ Bottom Right</button>
             </div>
             <div class="atem-pip-row">
                 <select id="atem-pip-source-select" onchange="submitAtemPipSource(this.value)">
@@ -289,6 +289,14 @@
             const pipOffBtn = document.getElementById('atem-pip-off-btn');
             if (pipOnBtn) pipOnBtn.classList.toggle('active', !!payload.pip_on);
             if (pipOffBtn) pipOffBtn.classList.toggle('active', !payload.pip_on);
+
+            document.querySelectorAll('.atem-pip-corner-btn').forEach((btn) => {
+                btn.classList.remove('active');
+            });
+            if (payload.pip_corner) {
+                const activeCornerBtn = document.getElementById(`atem-pip-corner-btn-${payload.pip_corner}`);
+                if (activeCornerBtn) activeCornerBtn.classList.add('active');
+            }
 
             const pipSourceSelect = document.getElementById('atem-pip-source-select');
             if (pipSourceSelect && payload.pip_source != null && document.activeElement !== pipSourceSelect) {

@@ -34,6 +34,14 @@ ATEM_PIP_CORNERS = {
     "bottom-left": (-11.5, -6.5),
     "bottom-right": (11.5, -6.5),
 }
+ATEM_PIP_CORNER_TOLERANCE = 0.5  # position units - for matching live state back to a named corner
+
+
+def match_pip_corner(position_x, position_y):
+    for corner, (target_x, target_y) in ATEM_PIP_CORNERS.items():
+        if abs(position_x - target_x) <= ATEM_PIP_CORNER_TOLERANCE and abs(position_y - target_y) <= ATEM_PIP_CORNER_TOLERANCE:
+            return corner
+    return None
 
 
 def default_preset_name(preset_num):
@@ -489,10 +497,12 @@ def atem_state():
                 "model": None,
                 "pip_on": False,
                 "pip_source": None,
+                "pip_corner": None,
             }
         )
 
     pip_keyer = atem.keyer[0][0]
+    pip_dve = atem.key[0][0].dVE
     return jsonify(
         {
             "connected": True,
@@ -501,6 +511,7 @@ def atem_state():
             "model": atem.atemModel or None,
             "pip_on": pip_keyer.onAir.enabled,
             "pip_source": pip_keyer.fillSource.value,
+            "pip_corner": match_pip_corner(pip_dve.position.x, pip_dve.position.y),
         }
     )
 

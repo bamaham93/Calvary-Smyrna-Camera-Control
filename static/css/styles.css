@@ -166,7 +166,8 @@ button:active { background: #666; }
 }
 
 #atem-pip-on-btn.active,
-#atem-pip-off-btn.active {
+#atem-pip-off-btn.active,
+.atem-pip-corner-btn.active {
     background: #25405e;
     box-shadow: 0 0 0 2px #3a7bd5 inset;
 }
