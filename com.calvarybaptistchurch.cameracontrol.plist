@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.calvarybaptistchurch.cameracontrol</string>
+
+    <!-- EDIT THIS PATH if your clone of this repo isn't here - run `pwd`
+         inside the project folder to get the exact path to use. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/calvarybaptistchurchlivestream/Calvary-Smyrna-Camera-Control/run.sh</string>
+    </array>
+
+    <!-- Start it as soon as this is loaded (including at login), and
+         restart it automatically if the process ever exits or is killed. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- launchd-level output only (the app's own logs go to logs/app.log
+         via run.sh) - useful if run.sh itself fails to even start. -->
+    <key>StandardOutPath</key>
+    <string>/Users/calvarybaptistchurchlivestream/Calvary-Smyrna-Camera-Control/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/calvarybaptistchurchlivestream/Calvary-Smyrna-Camera-Control/logs/launchd.err.log</string>
+</dict>
+</plist>
