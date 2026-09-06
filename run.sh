@@ -13,8 +13,14 @@ mkdir -p logs
 # EDIT THIS PATH if your virtual environment isn't ./venv (e.g. it's
 # ./.venv, or you haven't created one yet: `python3 -m venv venv` from
 # this directory, then `venv/bin/pip install -r requirements.txt`).
-source venv/bin/activate
+#
+# Calling venv/bin/python3 directly (rather than `source venv/bin/activate`
+# then bare `python3`) sidesteps a real case seen in testing: activation
+# can leave `python3` on PATH resolving to something outside the venv
+# entirely, even though the prompt shows (venv) and pip3 installs land in
+# the right place. The explicit path can't be shadowed that way.
+VENV_PYTHON="venv/bin/python3"
 
 # Port 3100 matches what's already configured in FreeShow's Emitters -
 # changing it here means updating those too.
-exec python3 app.py runserver 0.0.0.0:3100 >> logs/app.log 2>&1
+exec "$VENV_PYTHON" app.py runserver 0.0.0.0:3100 >> logs/app.log 2>&1
