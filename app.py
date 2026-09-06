@@ -8,12 +8,12 @@ from camera_worker import CameraWorker, TimedOut
 from visca import ViscaCamera
 
 app = Flask(__name__)
-cam = ViscaCamera("10.238.171.114")
 worker = CameraWorker()
 CAMERA_TIMEOUT = 2.0
 CONFIG_FILE = Path(__file__).with_name("config.json")
 DEFAULT_PRESET_RANGE = range(1, 13)
 DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8}
+DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
 
 
 def default_preset_name(preset_num):
@@ -58,21 +58,57 @@ def sanitize_tilt_speed(speed):
     return max(0, min(20, cleaned_speed))
 
 
+def sanitize_camera_ip(ip):
+    cleaned_ip = str(ip).strip()
+    return cleaned_ip or DEFAULT_CAMERA["ip"]
+
+
+def sanitize_camera_port(port):
+    try:
+        cleaned_port = int(port)
+    except (TypeError, ValueError):
+        return DEFAULT_CAMERA["port"]
+
+    return max(1, min(65535, cleaned_port))
+
+
 def load_config(file_path=None):
     file_path = file_path or CONFIG_FILE
     names = default_preset_names()
     settings = dict(DEFAULT_SETTINGS)
+    camera = dict(DEFAULT_CAMERA)
+    local_positions = {}
 
     if not file_path.exists():
-        return names, settings
+        return names, settings, camera, local_positions
 
     try:
         persisted = json.loads(file_path.read_text())
     except (json.JSONDecodeError, OSError):
-        return names, settings
+        return names, settings, camera, local_positions
 
     if not isinstance(persisted, dict):
-        return names, settings
+        return names, settings, camera, local_positions
+
+    persisted_local_positions = persisted.get("local_positions", {})
+    if isinstance(persisted_local_positions, dict):
+        for key, value in persisted_local_positions.items():
+            try:
+                position_num = int(key)
+            except (TypeError, ValueError):
+                continue
+
+            if position_num in DEFAULT_PRESET_RANGE or not isinstance(value, dict):
+                continue
+
+            try:
+                local_positions[position_num] = {
+                    "pan": int(value["pan"]),
+                    "tilt": int(value["tilt"]),
+                    "zoom": int(value["zoom"]),
+                }
+            except (KeyError, TypeError, ValueError):
+                continue
 
     persisted_names = persisted.get("preset_names", {})
     if isinstance(persisted_names, dict):
@@ -82,7 +118,7 @@ def load_config(file_path=None):
             except (TypeError, ValueError):
                 continue
 
-            if preset_num not in DEFAULT_PRESET_RANGE:
+            if preset_num not in DEFAULT_PRESET_RANGE and preset_num not in local_positions:
                 continue
 
             cleaned_name = sanitize_preset_name(value, preset_num)
@@ -94,10 +130,15 @@ def load_config(file_path=None):
         settings["pan_speed"] = sanitize_pan_speed(persisted_settings.get("pan_speed"))
         settings["tilt_speed"] = sanitize_tilt_speed(persisted_settings.get("tilt_speed"))
 
-    return names, settings
+    persisted_camera = persisted.get("camera", {})
+    if isinstance(persisted_camera, dict):
+        camera["ip"] = sanitize_camera_ip(persisted_camera.get("ip", camera["ip"]))
+        camera["port"] = sanitize_camera_port(persisted_camera.get("port", camera["port"]))
+
+    return names, settings, camera, local_positions
 
 
-def save_config(names, settings, file_path=None):
+def save_config(names, settings, camera, local_positions, file_path=None):
     file_path = file_path or CONFIG_FILE
     data = {
         "preset_names": {str(preset): name for preset, name in names.items()},
@@ -106,12 +147,33 @@ def save_config(names, settings, file_path=None):
             "pan_speed": sanitize_pan_speed(settings.get("pan_speed")),
             "tilt_speed": sanitize_tilt_speed(settings.get("tilt_speed")),
         },
+        "camera": {
+            "ip": sanitize_camera_ip(camera.get("ip")),
+            "port": sanitize_camera_port(camera.get("port")),
+        },
+        "local_positions": {
+            str(num): {"pan": position["pan"], "tilt": position["tilt"], "zoom": position["zoom"]}
+            for num, position in local_positions.items()
+        },
     }
     file_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
 
-def preset_in_range(preset_num):
-    return preset_num in DEFAULT_PRESET_RANGE
+def is_camera_preset(num):
+    return num in DEFAULT_PRESET_RANGE
+
+
+def is_local_position(num):
+    return num in local_positions
+
+
+def preset_exists(num):
+    return is_camera_preset(num) or is_local_position(num)
+
+
+def next_local_position_number():
+    existing = list(DEFAULT_PRESET_RANGE) + list(local_positions.keys())
+    return max(existing) + 1
 
 
 def safe_recall(preset):
@@ -120,16 +182,52 @@ def safe_recall(preset):
     cam.preset_recall(preset)
 
 
-preset_names, settings = load_config()
+def recall_local_position(num):
+    position = local_positions[num]
+    cam.stop(settings["pan_speed"], settings["tilt_speed"])
+    cam.zoom_stop()
+    cam.move_to_position(
+        position["pan"],
+        position["tilt"],
+        position["zoom"],
+        pan_speed=settings["pan_speed"],
+        tilt_speed=settings["tilt_speed"],
+    )
+
+
+def capture_local_position(num):
+    feedback = cam.get_position_feedback()
+    local_positions[num] = {
+        "pan": feedback["pan"],
+        "tilt": feedback["tilt"],
+        "zoom": feedback["zoom"],
+    }
+    save_config(preset_names, settings, camera, local_positions)
+
+
+def create_and_capture_local_position(requested_name):
+    # Assigning the number and capturing the position happen together on
+    # the worker thread so two concurrent "Add Position" requests can't
+    # race and grab the same number.
+    num = next_local_position_number()
+    capture_local_position(num)
+    preset_names[num] = sanitize_preset_name(requested_name or default_preset_name(num), num)
+    save_config(preset_names, settings, camera, local_positions)
+    return num
+
+
+preset_names, settings, camera, local_positions = load_config()
+cam = ViscaCamera(camera["ip"], port=camera["port"])
 
 
 @app.route("/preset/<int:num>")
 def preset(num):
-    if not preset_in_range(num):
+    if not preset_exists(num):
         return "Invalid preset", 400
 
+    recall_job = recall_local_position if is_local_position(num) else safe_recall
     try:
-        worker.submit(safe_recall, num, timeout=CAMERA_TIMEOUT)
+        worker.submit(recall_job, num, timeout=CAMERA_TIMEOUT)
     except TimedOut:
         return jsonify({"error": "Camera did not respond in time"}), 503
 
@@ -138,11 +236,14 @@ def preset(num):
 
 @app.route("/preset/<int:num>/set", methods=["POST"])
 def preset_set(num):
-    if not preset_in_range(num):
+    if not preset_exists(num):
         return "Invalid preset", 400
 
     try:
-        worker.submit(cam.preset_set, num, timeout=CAMERA_TIMEOUT)
+        if is_local_position(num):
+            worker.submit(capture_local_position, num, timeout=CAMERA_TIMEOUT)
+        else:
+            worker.submit(cam.preset_set, num, timeout=CAMERA_TIMEOUT)
     except TimedOut:
         return jsonify({"error": "Camera did not respond in time"}), 503
 
@@ -151,7 +252,7 @@ def preset_set(num):
 
 @app.route("/preset/<int:num>/name", methods=["POST"])
 def preset_name(num):
-    if not preset_in_range(num):
+    if not preset_exists(num):
         return "Invalid preset", 400
 
     requested_name = request.form.get("name")
@@ -164,8 +265,61 @@ def preset_name(num):
 
     cleaned_name = sanitize_preset_name(requested_name, num)
     preset_names[num] = cleaned_name
-    save_config(preset_names, settings)
+    save_config(preset_names, settings, camera, local_positions)
     return f"Updated preset {num} name to {cleaned_name}"
+
+
+@app.route("/position/local", methods=["POST"])
+def create_local_position():
+    requested_name = request.form.get("name")
+    if requested_name is None and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        requested_name = payload.get("name")
+
+    try:
+        num = worker.submit(create_and_capture_local_position, requested_name, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
+    except (OSError, ValueError, TimeoutError):
+        return jsonify({"error": "Unable to read camera position"}), 503
+
+    return jsonify({"num": num, "name": preset_names[num]})
+
+
+@app.route("/position/local/<int:num>/delete", methods=["POST"])
+def delete_local_position(num):
+    if not is_local_position(num):
+        return "Invalid local position", 400
+
+    del local_positions[num]
+    preset_names.pop(num, None)
+    save_config(preset_names, settings, camera, local_positions)
+    return f"Deleted position {num}"
+
+
+@app.route("/position/goto", methods=["POST"])
+def goto_position():
+    payload = request.get_json(silent=True) if request.is_json else None
+    payload = payload or request.form
+
+    try:
+        pan = int(payload.get("pan"))
+        tilt = int(payload.get("tilt"))
+        zoom = int(payload.get("zoom"))
+    except (TypeError, ValueError):
+        return "pan, tilt, and zoom are required integers", 400
+
+    def move():
+        cam.move_to_position(pan, tilt, zoom, settings["pan_speed"], settings["tilt_speed"])
+
+    try:
+        worker.submit(move, timeout=CAMERA_TIMEOUT)
+    except TimedOut:
+        return jsonify({"error": "Camera did not respond in time"}), 503
+    except ValueError as exc:
+        return str(exc), 400
+
+    return f"Moving to pan={pan}, tilt={tilt}, zoom={zoom}"
 
 
 @app.route("/settings", methods=["POST"])
@@ -173,6 +327,8 @@ def update_settings():
     requested_zoom_speed = request.form.get("zoom_speed")
     requested_pan_speed = request.form.get("pan_speed")
     requested_tilt_speed = request.form.get("tilt_speed")
+    requested_camera_ip = request.form.get("camera_ip")
+    requested_camera_port = request.form.get("camera_port")
 
     if request.is_json:
         payload = request.get_json(silent=True) or {}
@@ -182,6 +338,10 @@ def update_settings():
             requested_pan_speed = payload.get("pan_speed")
         if requested_tilt_speed is None:
             requested_tilt_speed = payload.get("tilt_speed")
+        if requested_camera_ip is None:
+            requested_camera_ip = payload.get("camera_ip")
+        if requested_camera_port is None:
+            requested_camera_port = payload.get("camera_port")
 
     if requested_zoom_speed is None:
         return "zoom_speed is required", 400
@@ -189,16 +349,24 @@ def update_settings():
         return "pan_speed is required", 400
     if requested_tilt_speed is None:
         return "tilt_speed is required", 400
+    if requested_camera_ip is None:
+        return "camera_ip is required", 400
+    if requested_camera_port is None:
+        return "camera_port is required", 400
 
     settings["zoom_speed"] = sanitize_zoom_speed(requested_zoom_speed)
     settings["pan_speed"] = sanitize_pan_speed(requested_pan_speed)
     settings["tilt_speed"] = sanitize_tilt_speed(requested_tilt_speed)
-    save_config(preset_names, settings)
+    camera["ip"] = sanitize_camera_ip(requested_camera_ip)
+    camera["port"] = sanitize_camera_port(requested_camera_port)
+    cam.set_target(camera["ip"], camera["port"])
+    save_config(preset_names, settings, camera, local_positions)
     return (
         "Updated settings: "
         f"zoom speed {settings['zoom_speed']}, "
         f"pan speed {settings['pan_speed']}, "
-        f"tilt speed {settings['tilt_speed']}"
+        f"tilt speed {settings['tilt_speed']}, "
+        f"camera {camera['ip']}:{camera['port']}"
     )
 
 
@@ -279,12 +447,32 @@ def position():
 
 @app.route("/")
 def home():
+    all_preset_numbers = list(DEFAULT_PRESET_RANGE) + sorted(local_positions)
     presets = [
-        {"num": preset, "name": preset_names.get(preset, default_preset_name(preset))}
-        for preset in DEFAULT_PRESET_RANGE
+        {"num": num, "name": preset_names.get(num, default_preset_name(num))}
+        for num in all_preset_numbers
     ]
 
-    return render_template("index.html", presets=presets, settings=settings)
+    return render_template("index.html", presets=presets, settings=settings, camera=camera)
+
+
+@app.route("/positions")
+def positions_page():
+    camera_presets = [
+        {"num": num, "name": preset_names.get(num, default_preset_name(num))}
+        for num in DEFAULT_PRESET_RANGE
+    ]
+    local_position_list = [
+        {"num": num, "name": preset_names.get(num, default_preset_name(num)), **local_positions[num]}
+        for num in sorted(local_positions)
+    ]
+
+    return render_template(
+        "positions.html",
+        camera_presets=camera_presets,
+        local_positions=local_position_list,
+        settings=settings,
+    )
 
 
 def parse_host_port(argv):

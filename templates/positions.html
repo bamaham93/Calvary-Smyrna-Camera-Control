@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manage Positions</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+
+<div class="header-row">
+    <h1>Manage Positions</h1>
+    <div class="header-actions">
+        <a class="button-link" href="/">← Back to Control</a>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="panel">
+        <h2>Pan / Tilt</h2>
+        <div class="dpad">
+            <button hx-get="/move/up-left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↖</button>
+
+            <button hx-get="/move/up" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↑</button>
+
+            <button hx-get="/move/up-right" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↗</button>
+
+            <button hx-get="/move/left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">←</button>
+
+            <button class="center-stop" hx-get="/stop" hx-target="#status" hx-swap="innerText">■</button>
+
+            <button hx-get="/move/right" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">→</button>
+
+            <button hx-get="/move/down-left" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↙</button>
+
+            <button hx-get="/move/down" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↓</button>
+
+            <button hx-get="/move/down-right" hx-trigger="mousedown, touchstart" hx-target="#status" hx-swap="innerText"
+                onmouseup="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})"
+                ontouchend="htmx.ajax('GET','/move/stop',{target:'#status', swap:'innerText'})">↘</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Zoom</h2>
+        <div class="zoom-controls">
+            <button hx-get="/zoom/in/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">＋</button>
+            <button hx-get="/zoom/stop" hx-target="#status" hx-swap="innerText">■</button>
+            <button hx-get="/zoom/out/{{ settings.zoom_speed }}" hx-target="#status" hx-swap="innerText">－</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Position Feedback</h2>
+        <div class="position-grid">
+            <div>Pan: <span id="position-pan">--</span></div>
+            <div>Tilt: <span id="position-tilt">--</span></div>
+            <div>Zoom: <span id="position-zoom">--</span></div>
+        </div>
+        <button type="button" onclick="refreshPositionFeedback()">Refresh Position</button>
+    </div>
+
+    <div class="panel">
+        <h2>Go To Specific PTZ Values</h2>
+        <p class="hint">Values are raw units, matching what Position Feedback reports above — not degrees.</p>
+        <form onsubmit="submitGoto(event)" class="goto-form">
+            <div>
+                <label for="goto-pan">Pan</label>
+                <input id="goto-pan" type="number" required>
+            </div>
+            <div>
+                <label for="goto-tilt">Tilt</label>
+                <input id="goto-tilt" type="number" required>
+            </div>
+            <div>
+                <label for="goto-zoom">Zoom</label>
+                <input id="goto-zoom" type="number" min="0" required>
+            </div>
+            <button type="submit">Go</button>
+        </form>
+    </div>
+
+    <div class="panel danger-panel">
+        <h2>Camera Presets (1&ndash;12)</h2>
+        <p class="hint">Stored on the camera itself. "Set Current View" overwrites the preset permanently.</p>
+        <div class="preset-grid">
+            {% for preset in camera_presets %}
+            <div class="preset-card">
+                <button id="preset-label-{{ preset.num }}" class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
+                <button class="preset-edit-btn" type="button" onclick="openNameModal({{ preset.num }}, '{{ preset.name|replace("'", "&#39;") }}')">Rename</button>
+                <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText"
+                    hx-confirm="Overwrite camera preset '{{ preset.name }}' with the current view?">Set Current View</button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="panel danger-panel">
+        <h2>Local Positions (beyond camera storage)</h2>
+        <p class="hint">Stored in this app, not on the camera &mdash; there's no hardware limit on how many you can add.</p>
+        <div class="preset-grid" id="local-positions-grid">
+            {% for position in local_positions %}
+            <div class="preset-card" id="local-position-card-{{ position.num }}">
+                <button id="preset-label-{{ position.num }}" class="preset-recall" hx-get="/preset/{{ position.num }}" hx-target="#status" hx-swap="innerText">{{ position.name }}</button>
+                <button class="preset-edit-btn" type="button" onclick="openNameModal({{ position.num }}, '{{ position.name|replace("'", "&#39;") }}')">Rename</button>
+                <button class="preset-set-btn" hx-post="/preset/{{ position.num }}/set" hx-target="#status" hx-swap="innerText"
+                    hx-confirm="Update '{{ position.name }}' to the current view?">Update to Current View</button>
+                <button class="preset-delete-btn" type="button" onclick="submitDeletePosition({{ position.num }}, '{{ position.name|replace("'", "&#39;") }}')">Delete</button>
+            </div>
+            {% endfor %}
+        </div>
+        <button type="button" class="add-position-btn" onclick="openAddPositionModal()">+ Add New Position From Current View</button>
+    </div>
+
+</div>
+
+<div id="name-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'name-modal-overlay')">
+    <div class="modal">
+        <h2>Rename Preset</h2>
+        <form id="name-modal-form" onsubmit="submitPresetName(event)">
+            <input type="hidden" id="name-modal-preset-num" value="">
+            <label for="name-modal-input">Name</label>
+            <input id="name-modal-input" type="text" maxlength="40" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'name-modal-overlay')">Cancel</button>
+                <button type="submit">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="add-position-modal-overlay" class="modal-overlay" onclick="closeModal(event, 'add-position-modal-overlay')">
+    <div class="modal">
+        <h2>Add New Position</h2>
+        <p class="hint">Captures the camera's current pan/tilt/zoom right now.</p>
+        <form id="add-position-form" onsubmit="submitNewPosition(event)">
+            <label for="add-position-input">Name</label>
+            <input id="add-position-input" type="text" maxlength="40" required>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal(event, 'add-position-modal-overlay')">Cancel</button>
+                <button type="submit">Capture</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="status">Ready</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+    function openAddPositionModal() {
+        document.getElementById('add-position-input').value = '';
+        document.getElementById('add-position-modal-overlay').classList.add('open');
+    }
+
+    async function submitNewPosition(event) {
+        event.preventDefault();
+        const input = document.getElementById('add-position-input');
+        const params = new URLSearchParams();
+        params.append('name', input.value);
+
+        const response = await fetch('/position/local', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: params,
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            setStatus(payload.error || 'Unable to add position');
+            return;
+        }
+
+        setStatus('Position added');
+        document.getElementById('add-position-modal-overlay').classList.remove('open');
+        window.location.reload();
+    }
+
+    async function submitDeletePosition(num, name) {
+        if (!confirm(`Delete position '${name}'? This can't be undone.`)) return;
+
+        const response = await fetch(`/position/local/${num}/delete`, {method: 'POST'});
+        const text = await response.text();
+        setStatus(text);
+
+        if (response.ok) {
+            const card = document.getElementById(`local-position-card-${num}`);
+            if (card) card.remove();
+        }
+    }
+
+    async function submitGoto(event) {
+        event.preventDefault();
+        const pan = document.getElementById('goto-pan').value;
+        const tilt = document.getElementById('goto-tilt').value;
+        const zoom = document.getElementById('goto-zoom').value;
+
+        const response = await fetch('/position/goto', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pan, tilt, zoom}),
+        });
+
+        const text = await response.text();
+        setStatus(text);
+    }
+</script>
+
+</body>
+</html>
