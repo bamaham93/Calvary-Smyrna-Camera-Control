@@ -51,8 +51,8 @@ Everything is persisted in `config.json` in the project root:
 - `local_positions`: pan/tilt/zoom coordinates for positions beyond the
   camera's own onboard preset memory (13+), captured from the camera's
   current position and replayed the same way.
-- `atem`: `ip` of an ATEM switcher (optional - leave blank if there isn't
-  one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
+- `atem`: `ip` of an ATEM switcher (defaults to `10.238.171.135`; set it
+  blank if there isn't one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
   the Program input directly and read Program/Preview tally state.
 - `atem_input_names`: display names for the switcher's inputs (1-4 by
   default, matching an ATEM Mini Pro's 4 HDMI inputs).

@@ -17,9 +17,9 @@ CAMERA_TIMEOUT = 2.0
 ATEM_TIMEOUT = 2.0
 CONFIG_FILE = Path(__file__).with_name("config.json")
 DEFAULT_PRESET_RANGE = range(1, 13)
-DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8, "position_speed": 5}
+DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8, "position_speed": 2}
 DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
-DEFAULT_ATEM = {"ip": ""}
+DEFAULT_ATEM = {"ip": "10.238.171.135"}
 DEFAULT_ATEM_INPUT_RANGE = range(1, 5)
 ATEM_KEYER_TYPE_DVE = 3  # PyATEMMax's ATEMKeyerTypes.dVE
 # Size (0.0-1.0 fraction of frame) and position for each PIP corner,
@@ -404,8 +404,6 @@ def connect_atem(ip):
     if ip:
         atem.connect(ip)
 
-
-connect_atem(atem_config["ip"])
 
 
 @app.route("/preset/<int:num>")
@@ -1087,6 +1085,9 @@ def parse_host_port(argv):
 
 if __name__ == "__main__":
     host, port = parse_host_port(sys.argv)
+    # Connect here rather than at import time, so importing the module
+    # (e.g. from the test suite) never reaches out to real hardware.
+    connect_atem(atem_config["ip"])
     # use_reloader=False avoids Werkzeug's debug-mode child process, which
     # can outlive a killed/closed terminal and keep the port bound.
     # threaded=True lets Flask accept requests concurrently; actual camera
