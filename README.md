@@ -35,15 +35,22 @@ Everything is persisted in `config.json` in the project root:
 - `preset_names`: display names for both camera presets (1-12) and local
   positions (13+).
 - `settings`: `zoom_speed` / `pan_speed` / `tilt_speed` (manual dpad and
-  zoom controls), `position_speed` (used only for local-position recall
-  and "Go To", since absolute-position moves are more precise at lower
+  zoom controls), `position_speed` (used for recalling any stored
+  preset/position and "Go To", since absolute-position moves are more precise at lower
   speeds than manual panning wants to be).
 - `camera`: `ip` / `port` the app sends VISCA commands to. Editable from
   Settings in the UI - no code changes needed when the camera's address
   changes.
+- `preset_positions`: pan/tilt/zoom coordinates for camera presets 1-12.
+  The app is the source of truth for these - recall replays them via
+  VISCA's absolute-position commands (at `position_speed`), and the
+  camera's onboard preset memory is kept as a mirror so direct control
+  (NDI Tools etc.) matches. "Import from Camera" / "Export to Camera" on
+  Manage Positions sync the two in either direction. A preset with no
+  entry here falls back to the camera's own recall.
 - `local_positions`: pan/tilt/zoom coordinates for positions beyond the
-  camera's own onboard preset memory, captured from the camera's current
-  position and replayed via VISCA's absolute-position commands.
+  camera's own onboard preset memory (13+), captured from the camera's
+  current position and replayed the same way.
 - `atem`: `ip` of an ATEM switcher (optional - leave blank if there isn't
   one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
   the Program input directly and read Program/Preview tally state.

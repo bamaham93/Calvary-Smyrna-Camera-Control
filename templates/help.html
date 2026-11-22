@@ -51,7 +51,14 @@
             during a service.
         </p>
         <ul>
-            <li><strong>Camera Presets (1&ndash;12)</strong> &mdash; stored on the camera itself. "Set Current View" tells the camera to overwrite that preset with wherever it's pointed right now.</li>
+            <li><strong>Camera Presets (1&ndash;12)</strong> &mdash; stored in this app <em>and</em> mirrored into the camera's own preset memory, so direct control (NDI Tools, the camera's remote) lands on the same shots. Recall uses the app's copy, so it moves at the app's Position Recall Speed. "Set Current View" overwrites both copies at once.
+                <ul>
+                    <li><strong>Import from Camera</strong> &mdash; moves the camera through presets 1&ndash;12 and records where each one lands. Use it once to bring existing camera presets into the app, or if someone changed presets directly on the camera.</li>
+                    <li><strong>Export to Camera</strong> &mdash; moves to each preset stored in the app and saves it into the camera's memory. Use it after a camera reset/replacement, or if the camera's copies have drifted.</li>
+                    <li>Both physically move the camera, so only run them when nothing is live. The main Stop (&#9632;) button aborts either one.</li>
+                    <li>A preset tagged <em>camera only</em> hasn't been imported yet &mdash; recalling it still works, using the camera's own copy and speed.</li>
+                </ul>
+            </li>
             <li><strong>Local Positions (13+)</strong> &mdash; stored in this app, not the camera, so there's no fixed limit on how many you can have. "Add New Position" captures the camera's current pan/tilt/zoom as a new entry; "Update to Current View" re-captures an existing one; "Delete" removes it.</li>
             <li><strong>Go To Specific PTZ Values</strong> &mdash; jump straight to raw pan/tilt/zoom numbers, e.g. to fine-tune a position you're about to save.</li>
         </ul>
@@ -61,7 +68,7 @@
             <tr><th>Field</th><th>What it controls</th></tr>
             <tr><td>Camera IP / Port</td><td>Where this app sends VISCA commands. Change this if the camera's network address changes &mdash; no code editing needed.</td></tr>
             <tr><td>Default Zoom / Pan / Tilt Speed</td><td>Speed used by manual dpad and zoom buttons.</td></tr>
-            <tr><td>Position Recall Speed</td><td>Speed used only when recalling a local position or using "Go To." Lower is slower but lands more precisely &mdash; PTZ gimbals tend to overshoot slightly at higher speeds, which is more visible at high zoom.</td></tr>
+            <tr><td>Position Recall Speed</td><td>Speed used when recalling any preset or position the app has stored (presets 1&ndash;12 included) and for "Go To." Lower is slower but lands more precisely &mdash; PTZ gimbals tend to overshoot slightly at higher speeds, which is more visible at high zoom.</td></tr>
             <tr><td>ATEM Switcher IP Address</td><td>Optional. Leave blank if there's no ATEM switcher &mdash; the Switcher panel just shows "Not connected" and nothing else changes.</td></tr>
         </table>
     </div>
@@ -83,13 +90,13 @@
                 <td>Recall a preset or position</td>
                 <td>GET <code>/preset/&lt;num&gt;</code></td>
                 <td>&mdash;</td>
-                <td>1&ndash;12 = camera presets, 13+ = local positions. Same call either way.</td>
+                <td>1&ndash;12 = camera presets, 13+ = local positions. Same call either way; both move to the app's stored coordinates.</td>
             </tr>
             <tr>
                 <td>Overwrite with current view</td>
                 <td>POST <code>/preset/&lt;num&gt;/set</code></td>
                 <td>&mdash;</td>
-                <td>Camera preset: saved on the camera. Local position: saved in this app's config.</td>
+                <td>Camera preset: saved in this app's config and on the camera. Local position: saved in this app's config.</td>
             </tr>
             <tr>
                 <td>Rename a preset/position</td>
@@ -108,6 +115,30 @@
                 <td>POST <code>/position/local/&lt;num&gt;/delete</code></td>
                 <td>&mdash;</td>
                 <td>Camera presets (1&ndash;12) can't be deleted, only overwritten.</td>
+            </tr>
+            <tr>
+                <td>Import presets 1&ndash;12 from the camera</td>
+                <td>POST <code>/presets/import</code></td>
+                <td>&mdash;</td>
+                <td>Runs in the background (returns 202) and moves the camera. Other camera calls return 409 until it finishes.</td>
+            </tr>
+            <tr>
+                <td>Export presets 1&ndash;12 to the camera</td>
+                <td>POST <code>/presets/export</code></td>
+                <td>&mdash;</td>
+                <td>Same as import, in the other direction. 400 if the app has no presets stored yet.</td>
+            </tr>
+            <tr>
+                <td>Import/export progress</td>
+                <td>GET <code>/presets/sync/status</code></td>
+                <td>&mdash;</td>
+                <td>JSON: <code>running</code>, <code>done</code>/<code>total</code>, <code>errors</code>, <code>message</code>.</td>
+            </tr>
+            <tr>
+                <td>Abort import/export</td>
+                <td>POST <code>/presets/sync/cancel</code></td>
+                <td>&mdash;</td>
+                <td><code>GET /stop</code> also aborts it.</td>
             </tr>
             <tr>
                 <td>Go to raw PTZ values</td>

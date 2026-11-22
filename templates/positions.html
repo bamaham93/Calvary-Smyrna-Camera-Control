@@ -123,11 +123,16 @@
 
     <div class="panel danger-panel">
         <h2>Camera Presets (1&ndash;12)</h2>
-        <p class="hint">Stored on the camera itself. "Set Current View" overwrites the preset permanently.</p>
+        <p class="hint">Stored in this app and mirrored to the camera's own memory, so direct control (NDI Tools, the camera's remote) lands on the same shots. "Set Current View" overwrites both copies.</p>
+        <div class="sync-actions">
+            <button type="button" onclick="startPresetSync('import')">Import from Camera</button>
+            <button type="button" onclick="startPresetSync('export')">Export to Camera</button>
+            <span id="sync-status" class="hint"></span>
+        </div>
         <div class="preset-grid">
             {% for preset in camera_presets %}
             <div class="preset-card">
-                <span class="preset-id">#{{ preset.num }}</span>
+                <span class="preset-id">#{{ preset.num }}{% if not preset.in_app %} <span id="preset-camera-only-{{ preset.num }}" class="camera-only-tag" title="Not imported into the app yet - recall uses the camera's own copy">camera only</span>{% endif %}</span>
                 <button id="preset-label-{{ preset.num }}" class="preset-recall" hx-get="/preset/{{ preset.num }}" hx-target="#status" hx-swap="innerText">{{ preset.name }}</button>
                 <button class="preset-edit-btn" type="button" onclick="openNameModal({{ preset.num }}, '{{ preset.name|replace("'", "&#39;") }}')">Rename</button>
                 <button class="preset-set-btn" hx-post="/preset/{{ preset.num }}/set" hx-target="#status" hx-swap="innerText"
@@ -248,6 +253,49 @@
         const text = await response.text();
         setStatus(text);
     }
+
+    const SYNC_CONFIRM = {
+        import: 'Import from Camera: the camera will move through presets 1-12 on its own and the app will record where each one lands, replacing the app\'s copies. Only do this when nothing is live. Continue?',
+        export: 'Export to Camera: the camera will move through each preset stored in the app and save it into the camera\'s memory, replacing the camera\'s copies. Only do this when nothing is live. Continue?',
+    };
+
+    function describeSync(state) {
+        let text = state.message || '';
+        if (state.running && state.total) text += ` (${state.done}/${state.total}) - press Stop (■) to abort`;
+        if (!state.running && state.errors && state.errors.length) {
+            text += ' - failed: ' + state.errors.map(e => `#${e.num} (${e.error})`).join(', ');
+        }
+        return text;
+    }
+
+    async function pollPresetSync() {
+        const response = await fetch('/presets/sync/status');
+        const state = await response.json().catch(() => ({}));
+        document.getElementById('sync-status').innerText = describeSync(state);
+        if (state.running) {
+            setTimeout(pollPresetSync, 500);
+        } else {
+            setStatus(state.message || 'Sync finished');
+            if (state.direction === 'import' && state.done) {
+                sessionStorage.setItem('pending-status-message', describeSync(state));
+                window.location.reload();
+            }
+        }
+    }
+
+    async function startPresetSync(direction) {
+        if (!confirm(SYNC_CONFIRM[direction])) return;
+        const response = await fetch(`/presets/${direction}`, {method: 'POST'});
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            setStatus(payload.error || `Unable to start ${direction}`);
+            return;
+        }
+        pollPresetSync();
+    }
+
+    // Pick up a sync that's already running (e.g. after a page reload).
+    fetch('/presets/sync/status').then(r => r.json()).then(state => { if (state.running) pollPresetSync(); }).catch(() => {});
 
     async function submitPipRaw(event) {
         event.preventDefault();

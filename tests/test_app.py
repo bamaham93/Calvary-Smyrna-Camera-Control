@@ -1,5 +1,6 @@
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -28,6 +29,8 @@ class FakeCamera:
 
     def get_position_feedback(self):
         self.calls.append(("get_position_feedback",))
+        if isinstance(self.position_feedback, Exception):
+            raise self.position_feedback
         return dict(self.position_feedback)
 
     def move_to_position(self, pan, tilt, zoom, pan_speed=8, tilt_speed=8):
@@ -146,6 +149,12 @@ class CameraAppTests(unittest.TestCase):
         self.original_local_positions = dict(camera_app.local_positions)
         self.original_atem_config = dict(camera_app.atem_config)
         self.original_atem_input_names = dict(camera_app.atem_input_names)
+        self.original_preset_positions = dict(camera_app.preset_positions)
+        self.original_settle = (
+            camera_app.SETTLE_POLL_INTERVAL,
+            camera_app.SETTLE_MIN_WAIT,
+            camera_app.SETTLE_TIMEOUT,
+        )
 
         self.temp_dir = tempfile.TemporaryDirectory()
         self.temp_path = Path(self.temp_dir.name) / "config.json"
@@ -156,6 +165,12 @@ class CameraAppTests(unittest.TestCase):
         camera_app.local_positions = {}
         camera_app.atem_config = dict(camera_app.DEFAULT_ATEM)
         camera_app.atem_input_names = camera_app.default_atem_input_names()
+        camera_app.preset_positions = {}
+        camera_app.SETTLE_POLL_INTERVAL = 0
+        camera_app.SETTLE_MIN_WAIT = 0
+        camera_app.SETTLE_TIMEOUT = 5.0
+        camera_app.sync_cancel.clear()
+        camera_app.sync_state.update(running=False, direction=None, current=None, done=0, total=0, errors=[])
         camera_app.cam = FakeCamera()
         camera_app.atem = FakeAtem()
         self.client = camera_app.app.test_client()
@@ -170,7 +185,22 @@ class CameraAppTests(unittest.TestCase):
         camera_app.local_positions = self.original_local_positions
         camera_app.atem_config = self.original_atem_config
         camera_app.atem_input_names = self.original_atem_input_names
+        camera_app.preset_positions = self.original_preset_positions
+        (
+            camera_app.SETTLE_POLL_INTERVAL,
+            camera_app.SETTLE_MIN_WAIT,
+            camera_app.SETTLE_TIMEOUT,
+        ) = self.original_settle
         self.temp_dir.cleanup()
+
+    def wait_for_sync(self):
+        deadline = time.monotonic() + 5
+        while camera_app.sync_state["running"]:
+            self.assertLess(time.monotonic(), deadline, "preset sync never finished")
+            time.sleep(0.01)
+        # The job flips `running` off in its finally block, then the worker
+        # marks it done - give the worker a moment so later submits don't race.
+        camera_app.worker.submit(lambda: None)
 
     def test_load_config_returns_defaults_for_missing_file(self):
         (
@@ -180,6 +210,7 @@ class CameraAppTests(unittest.TestCase):
             loaded_local_positions,
             loaded_atem,
             loaded_atem_names,
+            loaded_preset_positions,
         ) = camera_app.load_config(self.temp_path)
 
         self.assertEqual(loaded_names[1], "Preset 1")
@@ -193,6 +224,7 @@ class CameraAppTests(unittest.TestCase):
         self.assertEqual(loaded_atem, camera_app.DEFAULT_ATEM)
         self.assertEqual(loaded_atem_names[1], "Input 1")
         self.assertEqual(loaded_atem_names[4], "Input 4")
+        self.assertEqual(loaded_preset_positions, {})
 
     def test_load_config_merges_and_sanitizes_values(self):
         self.temp_path.write_text(
@@ -219,6 +251,7 @@ class CameraAppTests(unittest.TestCase):
             loaded_local_positions,
             loaded_atem,
             loaded_atem_names,
+            loaded_preset_positions,
         ) = camera_app.load_config(self.temp_path)
 
         self.assertEqual(loaded_names[1], "Stage Left")
@@ -755,6 +788,162 @@ class CameraAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(camera_app.atem_config["ip"], "")
         self.assertEqual(camera_app.atem.calls, [("disconnect",)])
+
+    # --- App-first camera presets (issue #20) ---
+
+    def test_preset_positions_round_trip_through_config(self):
+        camera_app.preset_positions[3] = {"pan": 10, "tilt": 20, "zoom": 30}
+        camera_app.persist()
+
+        stored = json.loads(self.temp_path.read_text())
+        self.assertEqual(stored["preset_positions"], {"3": {"pan": 10, "tilt": 20, "zoom": 30}})
+
+        loaded = camera_app.load_config(self.temp_path)
+        self.assertEqual(loaded[6], {3: {"pan": 10, "tilt": 20, "zoom": 30}})
+
+    def test_load_config_drops_out_of_range_preset_positions(self):
+        self.temp_path.write_text(
+            json.dumps(
+                {
+                    "preset_positions": {
+                        "1": {"pan": 1, "tilt": 2, "zoom": 3},
+                        "13": {"pan": 1, "tilt": 2, "zoom": 3},
+                        "2": {"pan": "bad"},
+                    }
+                }
+            )
+        )
+
+        loaded = camera_app.load_config(self.temp_path)
+        self.assertEqual(loaded[6], {1: {"pan": 1, "tilt": 2, "zoom": 3}})
+
+    def test_recall_camera_preset_uses_app_coordinates_and_app_speed(self):
+        camera_app.settings["position_speed"] = 7
+        camera_app.preset_positions[2] = {"pan": 100, "tilt": 200, "zoom": 300}
+
+        response = self.client.get("/preset/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("move_to_position", 100, 200, 300, 7, 7), camera_app.cam.calls)
+        self.assertNotIn(("preset_recall", 2), camera_app.cam.calls)
+
+    def test_recall_camera_preset_without_coordinates_falls_back_to_camera(self):
+        response = self.client.get("/preset/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("preset_recall", 2), camera_app.cam.calls)
+
+    def test_set_camera_preset_writes_camera_and_app(self):
+        camera_app.cam.position_feedback = {"pan": 11, "tilt": 22, "zoom": 33}
+
+        response = self.client.post("/preset/4/set")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(("preset_set", 4), camera_app.cam.calls)
+        self.assertEqual(camera_app.preset_positions[4], {"pan": 11, "tilt": 22, "zoom": 33})
+        stored = json.loads(self.temp_path.read_text())
+        self.assertEqual(stored["preset_positions"]["4"], {"pan": 11, "tilt": 22, "zoom": 33})
+
+    def test_set_camera_preset_drops_stale_coordinates_if_readback_fails(self):
+        camera_app.preset_positions[4] = {"pan": 1, "tilt": 1, "zoom": 1}
+        camera_app.cam.position_feedback = TimeoutError("no reply")
+
+        response = self.client.post("/preset/4/set")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("couldn't read its position back", response.get_data(as_text=True))
+        self.assertIn(("preset_set", 4), camera_app.cam.calls)
+        self.assertNotIn(4, camera_app.preset_positions)
+
+    def test_import_presets_records_every_camera_preset(self):
+        camera_app.cam.position_feedback = {"pan": 5, "tilt": 6, "zoom": 7}
+
+        response = self.client.post("/presets/import")
+        self.assertEqual(response.status_code, 202)
+        self.wait_for_sync()
+
+        recalls = [call[1] for call in camera_app.cam.calls if call[0] == "preset_recall"]
+        self.assertEqual(recalls, list(range(1, 13)))
+        self.assertEqual(sorted(camera_app.preset_positions), list(range(1, 13)))
+        self.assertEqual(camera_app.preset_positions[12], {"pan": 5, "tilt": 6, "zoom": 7})
+        self.assertEqual(camera_app.sync_state["errors"], [])
+        self.assertIn("Imported 12 of 12", camera_app.sync_state["message"])
+        stored = json.loads(self.temp_path.read_text())
+        self.assertEqual(len(stored["preset_positions"]), 12)
+
+    def test_import_presets_reports_failures_and_keeps_going(self):
+        camera_app.cam.position_feedback = TimeoutError("no reply")
+
+        self.client.post("/presets/import")
+        self.wait_for_sync()
+
+        self.assertEqual(len(camera_app.sync_state["errors"]), 12)
+        self.assertEqual(camera_app.preset_positions, {})
+        self.assertIn("12 failed", camera_app.sync_state["message"])
+
+    def test_export_presets_requires_stored_presets(self):
+        response = self.client.post("/presets/export")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(camera_app.sync_state["running"])
+
+    def test_export_presets_moves_then_saves_each_preset(self):
+        camera_app.settings["position_speed"] = 6
+        camera_app.preset_positions = {
+            1: {"pan": 10, "tilt": 20, "zoom": 30},
+            5: {"pan": 40, "tilt": 50, "zoom": 60},
+        }
+
+        response = self.client.post("/presets/export")
+        self.assertEqual(response.status_code, 202)
+        self.wait_for_sync()
+
+        relevant = [call for call in camera_app.cam.calls if call[0] in ("move_to_position", "preset_set")]
+        self.assertEqual(
+            relevant,
+            [
+                ("move_to_position", 10, 20, 30, 6, 6),
+                ("preset_set", 1),
+                ("move_to_position", 40, 50, 60, 6, 6),
+                ("preset_set", 5),
+            ],
+        )
+        self.assertIn("Exported 2 of 2", camera_app.sync_state["message"])
+
+    def test_cancelled_sync_stops_camera_and_reports(self):
+        camera_app.sync_cancel.set()
+        camera_app.sync_state["running"] = True
+
+        camera_app.run_preset_sync("import", [1, 2, 3])
+
+        self.assertFalse(camera_app.sync_state["running"])
+        self.assertIn("Stopped after 0 of 3", camera_app.sync_state["message"])
+        self.assertNotIn(("preset_recall", 1), camera_app.cam.calls)
+        self.assertIn(("zoom_stop",), camera_app.cam.calls)
+
+    def test_camera_commands_rejected_while_syncing(self):
+        camera_app.sync_state["running"] = True
+
+        self.assertEqual(self.client.get("/preset/1").status_code, 409)
+        self.assertEqual(self.client.get("/move/up").status_code, 409)
+        self.assertEqual(self.client.post("/presets/import").status_code, 409)
+        # Renaming doesn't touch the camera, so it still works.
+        self.assertEqual(self.client.post("/preset/1/name", data={"name": "Pulpit"}).status_code, 200)
+
+    def test_stop_also_cancels_a_running_sync(self):
+        self.client.get("/stop")
+
+        self.assertTrue(camera_app.sync_cancel.is_set())
+
+    def test_positions_page_marks_presets_not_yet_in_app(self):
+        camera_app.preset_positions[1] = {"pan": 1, "tilt": 1, "zoom": 1}
+
+        html = self.client.get("/positions").get_data(as_text=True)
+
+        self.assertIn("Import from Camera", html)
+        self.assertIn("Export to Camera", html)
+        self.assertNotIn('id="preset-camera-only-1"', html)
+        self.assertIn('id="preset-camera-only-2"', html)
 
 
 if __name__ == "__main__":
