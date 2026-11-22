@@ -30,7 +30,19 @@ wherever this repo is actually cloned.
 
 ## Configuration
 
-Everything is persisted in `config.json` in the project root:
+Everything is persisted in a single `config.json` that lives **outside the
+repo**, so `git pull`, updates and branch switches never touch it:
+
+- macOS: `~/Library/Application Support/CalvaryCameraControl/config.json`
+- Linux/other: `~/.config/calvary-camera-control/config.json`
+- Or anywhere you like: set `CAMERA_CONTROL_CONFIG=/path/to/config.json`.
+
+The app prints the path it's using at startup, and the Help page shows it.
+On first launch after upgrading, an old `config.json` in the project root
+is copied there automatically (the original is left alone). `config.json`
+is git-ignored, so a copy in the project root is never committed.
+
+What's in it:
 
 - `preset_names`: display names for both camera presets (1-12) and local
   positions (13+).
@@ -58,7 +70,7 @@ Everything is persisted in `config.json` in the project root:
   default, matching an ATEM Mini Pro's 4 HDMI inputs).
 
 All of the above is editable from the web UI (main page, Manage Positions,
-and the Settings modal) - `config.json` isn't meant to be hand-edited
+and the Settings modal) - the config file isn't meant to be hand-edited
 during normal use.
 
 ## Project structure

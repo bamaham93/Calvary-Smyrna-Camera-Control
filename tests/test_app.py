@@ -2,6 +2,7 @@ import json
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import app as camera_app
@@ -944,6 +945,62 @@ class CameraAppTests(unittest.TestCase):
         self.assertIn("Export to Camera", html)
         self.assertNotIn('id="preset-camera-only-1"', html)
         self.assertIn('id="preset-camera-only-2"', html)
+
+    # --- Config location outside the repo ---
+
+    def test_config_path_honours_env_override(self):
+        with mock.patch.dict("os.environ", {"CAMERA_CONTROL_CONFIG": "~/somewhere/cfg.json"}):
+            self.assertEqual(camera_app.default_config_path(), Path("~/somewhere/cfg.json").expanduser())
+
+    def test_config_path_defaults_to_application_support_on_macos(self):
+        with mock.patch.dict("os.environ", {"CAMERA_CONTROL_CONFIG": ""}), mock.patch.object(
+            camera_app.sys, "platform", "darwin"
+        ):
+            path = camera_app.default_config_path()
+        self.assertEqual(
+            path, Path.home() / "Library" / "Application Support" / "CalvaryCameraControl" / "config.json"
+        )
+
+    def test_config_path_is_never_inside_the_repo_by_default(self):
+        with mock.patch.dict("os.environ", {"CAMERA_CONTROL_CONFIG": ""}):
+            path = camera_app.default_config_path()
+        repo_root = Path(camera_app.__file__).resolve().parent
+        self.assertNotIn(repo_root, path.resolve().parents)
+
+    def test_migrate_copies_legacy_config_once_and_keeps_original(self):
+        legacy = Path(self.temp_dir.name) / "legacy.json"
+        legacy.write_text('{"preset_names": {"1": "Pulpit"}}')
+        target = Path(self.temp_dir.name) / "new" / "dir" / "config.json"
+
+        self.assertTrue(camera_app.migrate_legacy_config(target, legacy))
+        self.assertEqual(target.read_text(), legacy.read_text())
+        self.assertTrue(legacy.exists())
+
+        # A second run must never clobber the (possibly since-edited) new copy.
+        target.write_text('{"preset_names": {"1": "Edited"}}')
+        self.assertFalse(camera_app.migrate_legacy_config(target, legacy))
+        self.assertIn("Edited", target.read_text())
+
+    def test_migrate_does_nothing_without_legacy_config(self):
+        target = Path(self.temp_dir.name) / "config.json"
+        missing = Path(self.temp_dir.name) / "missing.json"
+
+        self.assertFalse(camera_app.migrate_legacy_config(target, missing))
+        self.assertFalse(target.exists())
+
+    def test_save_config_creates_folder_and_leaves_no_temp_file(self):
+        nested = Path(self.temp_dir.name) / "a" / "b" / "config.json"
+        camera_app.CONFIG_FILE = nested
+
+        camera_app.persist()
+
+        self.assertTrue(nested.exists())
+        self.assertFalse(nested.with_name("config.json.tmp").exists())
+        json.loads(nested.read_text())
+
+    def test_help_page_shows_config_location(self):
+        html = self.client.get("/help").get_data(as_text=True)
+        self.assertIn(str(camera_app.CONFIG_FILE), html)
 
 
 if __name__ == "__main__":

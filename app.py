@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -15,7 +16,39 @@ worker = CameraWorker()
 atem_worker = CameraWorker()
 CAMERA_TIMEOUT = 2.0
 ATEM_TIMEOUT = 2.0
-CONFIG_FILE = Path(__file__).with_name("config.json")
+CONFIG_ENV_VAR = "CAMERA_CONTROL_CONFIG"
+# Where config used to live: inside the repo checkout, which meant git
+# could overwrite it on pull/branch switch. Only read now, for the one-time
+# copy into the new location (see migrate_legacy_config).
+LEGACY_CONFIG_FILE = Path(__file__).with_name("config.json")
+
+
+def default_config_path():
+    """Config lives outside the repo so updates and branch switches never
+    touch it: $CAMERA_CONTROL_CONFIG if set, else the per-user app data
+    folder (~/Library/Application Support on macOS, ~/.config elsewhere)."""
+    override = os.environ.get(CONFIG_ENV_VAR, "").strip()
+    if override:
+        return Path(override).expanduser()
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "CalvaryCameraControl" / "config.json"
+    config_home = os.environ.get("XDG_CONFIG_HOME", "").strip() or str(Path.home() / ".config")
+    return Path(config_home) / "calvary-camera-control" / "config.json"
+
+
+def migrate_legacy_config(target, legacy=None):
+    """One-time copy of the old in-repo config.json to `target`, if target
+    doesn't exist yet. The old file is left in place (never deleted), so
+    this can't lose anything. Returns True if a copy was made."""
+    legacy = legacy or LEGACY_CONFIG_FILE
+    if target.exists() or not legacy.exists() or target.resolve() == legacy.resolve():
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy, target)
+    return True
+
+
+CONFIG_FILE = default_config_path()
 DEFAULT_PRESET_RANGE = range(1, 13)
 DEFAULT_SETTINGS = {"zoom_speed": 2, "pan_speed": 8, "tilt_speed": 8, "position_speed": 2}
 DEFAULT_CAMERA = {"ip": "10.238.171.114", "port": 1259}
@@ -279,7 +312,12 @@ def save_config(
             for num, position in preset_positions.items()
         },
     }
-    file_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+    # Write to a temp file and swap it in, so a crash or power cut mid-save
+    # can't leave a half-written (unreadable) config behind.
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = file_path.with_name(file_path.name + ".tmp")
+    temp_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+    os.replace(temp_path, file_path)
 
 
 def persist():
@@ -389,6 +427,7 @@ def create_and_capture_local_position(requested_name):
     return num
 
 
+migrate_legacy_config(CONFIG_FILE)
 preset_names, settings, camera, local_positions, atem_config, atem_input_names, preset_positions = load_config()
 cam = ViscaCamera(camera["ip"], port=camera["port"])
 
@@ -1059,7 +1098,7 @@ def positions_page():
 
 @app.route("/help")
 def help_page():
-    return render_template("help.html", base_url=request.host_url.rstrip("/"))
+    return render_template("help.html", base_url=request.host_url.rstrip("/"), config_path=str(CONFIG_FILE))
 
 
 def parse_host_port(argv):
@@ -1088,6 +1127,7 @@ if __name__ == "__main__":
     # Connect here rather than at import time, so importing the module
     # (e.g. from the test suite) never reaches out to real hardware.
     connect_atem(atem_config["ip"])
+    print(f"Using config file: {CONFIG_FILE}", flush=True)
     # use_reloader=False avoids Werkzeug's debug-mode child process, which
     # can outlive a killed/closed terminal and keep the port bound.
     # threaded=True lets Flask accept requests concurrently; actual camera

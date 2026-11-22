@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Live app config (positions, names, settings) lives outside the repo now
+# (see README > Configuration); never commit a copy of it.
+config.json
+config.json.tmp

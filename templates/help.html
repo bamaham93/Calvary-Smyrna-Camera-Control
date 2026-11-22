@@ -289,7 +289,7 @@
         <ul>
             <li><strong>Camera unreachable?</strong> Check Settings &rarr; Camera IP/Port matches the camera's actual network address.</li>
             <li><strong>A local position seems to land in the wrong spot?</strong> Try lowering Position Recall Speed in Settings &mdash; higher speeds can overshoot slightly, especially at high zoom.</li>
-            <li><strong>Config lives in <code>config.json</code></strong> next to the app &mdash; presets, local positions, and settings are all there. Back it up before making bulk changes if you want an easy way back.</li>
+            <li><strong>Config lives in <code>{{ config_path }}</code></strong> &mdash; presets, local positions, and settings are all there. It's outside the app's folder on purpose, so updating the app or switching versions never touches it. Back it up before making bulk changes if you want an easy way back.</li>
             <li><strong>This app should keep running</strong> for other software (FreeShow, Companion, etc.) to reach it &mdash; if it's restarted, anything pointed at it will start working again automatically once it's back up, no reconfiguration needed on the other end.</li>
             <li><strong>Switcher panel stuck on "Not connected"?</strong> Check the ATEM IP in Settings, and that this app and the ATEM are on the same network. It reconnects automatically once reachable &mdash; no need to restart the app.</li>
             <li><strong>Want a different PIP size or inset?</strong> The corner values in <code>ATEM_PIP_CORNERS</code> (confirmed on real hardware) assume a small inset in each corner &mdash; use "PIP Position Tuning" on Manage Positions to try different numbers, then have them hardcoded in if you want a permanent change.</li>
