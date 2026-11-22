@@ -30,28 +30,47 @@ wherever this repo is actually cloned.
 
 ## Configuration
 
-Everything is persisted in `config.json` in the project root:
+Everything is persisted in a single `config.json` that lives **outside the
+repo**, so `git pull`, updates and branch switches never touch it:
+
+- macOS: `~/Library/Application Support/CalvaryCameraControl/config.json`
+- Linux/other: `~/.config/calvary-camera-control/config.json`
+- Or anywhere you like: set `CAMERA_CONTROL_CONFIG=/path/to/config.json`.
+
+The app prints the path it's using at startup, and the Help page shows it.
+On first launch after upgrading, an old `config.json` in the project root
+is copied there automatically (the original is left alone). `config.json`
+is git-ignored, so a copy in the project root is never committed.
+
+What's in it:
 
 - `preset_names`: display names for both camera presets (1-12) and local
   positions (13+).
 - `settings`: `zoom_speed` / `pan_speed` / `tilt_speed` (manual dpad and
-  zoom controls), `position_speed` (used only for local-position recall
-  and "Go To", since absolute-position moves are more precise at lower
+  zoom controls), `position_speed` (used for recalling any stored
+  preset/position and "Go To", since absolute-position moves are more precise at lower
   speeds than manual panning wants to be).
 - `camera`: `ip` / `port` the app sends VISCA commands to. Editable from
   Settings in the UI - no code changes needed when the camera's address
   changes.
+- `preset_positions`: pan/tilt/zoom coordinates for camera presets 1-12.
+  The app is the source of truth for these - recall replays them via
+  VISCA's absolute-position commands (at `position_speed`), and the
+  camera's onboard preset memory is kept as a mirror so direct control
+  (NDI Tools etc.) matches. "Import from Camera" / "Export to Camera" on
+  Manage Positions sync the two in either direction. A preset with no
+  entry here falls back to the camera's own recall.
 - `local_positions`: pan/tilt/zoom coordinates for positions beyond the
-  camera's own onboard preset memory, captured from the camera's current
-  position and replayed via VISCA's absolute-position commands.
-- `atem`: `ip` of an ATEM switcher (optional - leave blank if there isn't
-  one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
+  camera's own onboard preset memory (13+), captured from the camera's
+  current position and replayed the same way.
+- `atem`: `ip` of an ATEM switcher (defaults to `10.238.171.135`; set it
+  blank if there isn't one). Uses [PyATEMMax](https://github.com/clvLabs/PyATEMMax) to switch
   the Program input directly and read Program/Preview tally state.
 - `atem_input_names`: display names for the switcher's inputs (1-4 by
   default, matching an ATEM Mini Pro's 4 HDMI inputs).
 
 All of the above is editable from the web UI (main page, Manage Positions,
-and the Settings modal) - `config.json` isn't meant to be hand-edited
+and the Settings modal) - the config file isn't meant to be hand-edited
 during normal use.
 
 ## Project structure

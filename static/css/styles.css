@@ -435,3 +435,17 @@ code {
     background: #2a2018;
     border-left-color: #cc8833;
 }
+
+.sync-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.camera-only-tag {
+    font-size: 0.7em;
+    opacity: 0.7;
+    font-style: italic;
+}
